@@ -8,3 +8,4 @@ build
 bundle/components.wxs
 dist
 README.html
+.vs/
