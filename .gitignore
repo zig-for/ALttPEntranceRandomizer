@@ -9,3 +9,4 @@ bundle/components.wxs
 dist
 README.html
 .vs/
+*multidata

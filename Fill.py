@@ -207,16 +207,17 @@ def distribute_items_restrictive(world, gftower_trash_count=0, fill_locations=No
     restitempool = [item for item in world.itempool if not item.advancement and not item.priority]
 
     # fill in gtower locations with trash first
-    if world.ganonstower_vanilla:
-        gtower_locations = [location for location in fill_locations if 'Ganons Tower' in location.name]
-        random.shuffle(gtower_locations)
-        trashcnt = 0
-        while gtower_locations and restitempool and trashcnt < gftower_trash_count:
-            spot_to_fill = gtower_locations.pop()
-            item_to_place = restitempool.pop()
-            world.push_item(spot_to_fill, item_to_place, False)
-            fill_locations.remove(spot_to_fill)
-            trashcnt += 1
+    for player in range(1, world.players + 1):
+        if world.ganonstower_vanilla[player]:
+            gtower_locations = [location for location in fill_locations if 'Ganons Tower' in location.name and location.player == player]
+            random.shuffle(gtower_locations)
+            trashcnt = 0
+            while gtower_locations and restitempool and trashcnt < gftower_trash_count:
+                spot_to_fill = gtower_locations.pop()
+                item_to_place = restitempool.pop()
+                world.push_item(spot_to_fill, item_to_place, False)
+                fill_locations.remove(spot_to_fill)
+                trashcnt += 1
 
     random.shuffle(fill_locations)
     fill_locations.reverse()
