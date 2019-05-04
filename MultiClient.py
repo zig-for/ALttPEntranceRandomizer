@@ -412,6 +412,9 @@ async def snes_write(ctx, address, data):
         except websockets.ConnectionClosed:
             pass
 
+        if ctx.is_sd2snes:
+            await asyncio.sleep(1)
+
         return True
     finally:
         ctx.snes_request_lock.release()
