@@ -250,11 +250,15 @@ def guiMain(args=None):
     countLabel = Label(bottomFrame, text='Count')
     countVar = StringVar()
     countSpinbox = Spinbox(bottomFrame, from_=1, to=100, textvariable=countVar)
+    worldLabel = Label(bottomFrame, text='Worlds')
+    worldVar = StringVar()
+    worldSpinbox = Spinbox(bottomFrame, from_=1, to=100, textvariable=worldVar)
 
     def generateRom():
         guiargs = Namespace
         guiargs.seed = int(seedVar.get()) if seedVar.get() else None
         guiargs.count = int(countVar.get()) if countVar.get() != '1' else None
+        guiargs.multi = int(worldVar.get())
         guiargs.mode = modeVar.get()
         guiargs.logic = logicVar.get()
         guiargs.goal = goalVar.get()
@@ -305,7 +309,9 @@ def guiMain(args=None):
 
     generateButton = Button(bottomFrame, text='Generate Patched Rom', command=generateRom)
 
-    seedLabel.pack(side=LEFT)
+    worldLabel.pack(side=LEFT)
+    worldSpinbox.pack(side=LEFT)
+    seedLabel.pack(side=LEFT,  padx=(5, 0))
     seedEntry.pack(side=LEFT)
     countLabel.pack(side=LEFT, padx=(5, 0))
     countSpinbox.pack(side=LEFT)
