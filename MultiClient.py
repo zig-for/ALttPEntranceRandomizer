@@ -9,6 +9,7 @@ import winsound
 
 ROM_START = 0x000000
 WRAM_START = 0xF50000
+WRAM_SIZE = 0x20000
 SRAM_START = 0xE00000
 
 ROMNAME_START = SRAM_START + 0x2000
@@ -300,6 +301,12 @@ async def snes_connect(ctx, address = None):
         await ctx.snes_socket.send(json.dumps(Attach_Request))
         ctx.snes_state = SNES_ATTACHED
 
+        if 'SD2SNES'.lower() in device.lower():
+            print("SD2SNES Detected")
+            ctx.is_sd2snes = True
+        else:
+            ctx.is_sd2snes = False
+
         recv_task = asyncio.create_task(snes_recv_loop(ctx))
 
     except Exception as e:
@@ -379,6 +386,25 @@ async def snes_write(ctx, address, data):
             "Space" : "SNES",
             "Operands" : [hex(address)[2:], hex(len(data))[2:]]
         }
+
+        if ctx.is_sd2snes:
+            if (address < WRAM_START) or ((address + len(data)) > (WRAM_START + WRAM_SIZE)):
+                print("SD2SNES: Write out of range %s (%d)" % (hex(address), len(data)))
+                return False
+            cmd = bytes(b'\x00\xE2\x20\x48\xEB\x48')
+            for ptr, byte in enumerate(data, address + 0x7E0000 - WRAM_START):
+                cmd += b'\xA9' # LDA
+                cmd += bytes([byte])
+                cmd += b'\x8F' # STA.l
+                cmd += bytes([ptr & 0xFF, (ptr >> 8) & 0xFF, (ptr >> 16) & 0xFF])
+            cmd += b'\xA9\x00\x8F\x00\x2C\x00\x68\xEB\x68\x28\x6C\xEA\xFF\x08'
+
+            PutAddress_Request = {
+                "Opcode" : "PutAddress",
+                "Space" : "CMD",
+                "Operands" : ["2C00", hex(len(cmd)-1)[2:], "2C00", "1"]
+            }
+            data = cmd
         try:
             await ctx.snes_socket.send(json.dumps(PutAddress_Request))
             if ctx.snes_socket is not None:
@@ -872,6 +898,7 @@ class Context:
         self.snes_state = SNES_DISCONNECTED
         self.snes_recv_queue = asyncio.Queue()
         self.snes_request_lock = asyncio.Lock()
+        self.is_sd2snes = False
 
         self.server_task = None
         self.socket = None
