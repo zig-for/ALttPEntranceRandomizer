@@ -843,7 +843,8 @@ def patch_rom(world, player, rom, hashtable, beep='normal', color='red', sprite=
 
     # set rom name
     # 21 bytes
-    rom.name = bytearray('ER_062_%09d\0' % world.seed, 'utf8') + world.option_identifier(player).to_bytes(4, 'big')
+    rom.name = bytearray('ER062%09d' % world.seed, 'utf8') + world.option_identifier(7, player).to_bytes(7, 'big')
+    assert(len(rom.name) == 21)
     rom.write_bytes(0x7FC0, rom.name)
 
     # Write title screen Code

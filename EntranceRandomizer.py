@@ -213,10 +213,8 @@ def start():
                             Output .json patch to stdout instead of a patched rom. Used
                             for VT site integration, do not use otherwise.
                             ''')
-    parser.add_argument('--multi', default=1, nargs='?', type=lambda value: min(max(int(value), 1), 255),
-                        help='''\
-                             Multiworld blablabla (default: %(default)s)
-                             ''')
+    parser.add_argument('--multi', default=1, nargs='?', type=lambda value: min(max(int(value), 1), 255))
+    parser.add_argument('--skip_playthrough', action='store_true')
     args = parser.parse_args()
 
     if is_bundled() and len(sys.argv) == 1:

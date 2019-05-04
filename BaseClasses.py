@@ -167,8 +167,8 @@ class World(object):
         for item in self.itempool:
             soft_collect(item)
 
-        for p in range(1, self.players + 1) if player is None else [player]:
-            if keys:
+        if keys:
+            for p in range(1, self.players + 1) if player is None else [player]:
                 from Items import ItemFactory
                 for item in ItemFactory(['Small Key (Escape)', 'Big Key (Eastern Palace)', 'Big Key (Desert Palace)', 'Small Key (Desert Palace)', 'Big Key (Tower of Hera)', 'Small Key (Tower of Hera)', 'Small Key (Agahnims Tower)', 'Small Key (Agahnims Tower)',
                                          'Big Key (Palace of Darkness)'] + ['Small Key (Palace of Darkness)'] * 6 + ['Big Key (Thieves Town)', 'Small Key (Thieves Town)', 'Big Key (Skull Woods)'] + ['Small Key (Skull Woods)'] * 3 + ['Big Key (Swamp Palace)',
@@ -294,7 +294,7 @@ class World(object):
 
         return False
 
-    def option_identifier(self, player):
+    def option_identifier(self, maxbytes, player):
         id_value = 0
         id_value_max = 1
 
@@ -321,9 +321,8 @@ class World(object):
         markbool(self.retro)
         marksequence(range(1, 256), self.players)
         marksequence(range(1, self.players + 1), player)
-        assert id_value_max <= 0xFFFFFFFF
+        assert id_value_max < (1 << (maxbytes * 8))
         return id_value
-
 
 class CollectionState(object):
 

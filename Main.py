@@ -109,10 +109,6 @@ def main(args, seed=None):
     elif args.algorithm == 'balanced':
         distribute_items_restrictive(world, gt_filler(world))
 
-    logger.info('Calculating playthrough.')
-
-    create_playthrough(world)
-
     logger.info('Patching ROM.')
 
     if args.sprite is not None:
@@ -125,8 +121,8 @@ def main(args, seed=None):
 
     outfilebase = 'ER_%s_%s-%s-%s%s_%s-%s%s%s%s%s_%s' % (world.logic, world.difficulty, world.mode, world.goal, "" if world.timer in ['none', 'display'] else "-" + world.timer, world.shuffle, world.algorithm, "-keysanity" if world.keysanity else "", "-retro" if world.retro else "", "-prog_" + world.progressive if world.progressive in ['off', 'random'] else "", "-nohints" if not world.hints else "", world.seed)
 
+    jsonout = {}
     if not args.suppress_rom:
-        jsonout = {}
         rom_names = {}
         for player in range(1, world.players + 1):
             if args.jsonout:
@@ -139,10 +135,7 @@ def main(args, seed=None):
                 jsonout['patch%d' % player] = rom.patches
             else:
                 rom.write_to_file(output_path('%s_P%d.sfc' % (outfilebase, player)))
-        if args.jsonout:
-            print(json.dumps({**jsonout, 'spoiler': world.spoiler.to_json()}))
 
-        # todo: get rid of this
         with open(output_path('%s_multidata' % outfilebase), 'w') as f:
             out = {"players": world.players, "rom_names": {}}
             for player in range(1, world.players + 1):
@@ -151,7 +144,14 @@ def main(args, seed=None):
                                world.get_filled_locations(player) if type(location.address) is int}
             f.write(json.dumps(out))
 
-    if args.create_spoiler and not args.jsonout:
+    logger.info('Calculating playthrough.')
+
+    if not args.skip_playthrough:
+        create_playthrough(world)
+
+    if args.jsonout:
+        print(json.dumps({**jsonout, 'spoiler': world.spoiler.to_json()}))
+    elif args.create_spoiler:
         world.spoiler.to_file(output_path('%s_Spoiler.txt' % outfilebase))
 
     logger.info('Done. Enjoy.')

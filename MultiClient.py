@@ -2,6 +2,7 @@ import aioconsole
 import argparse
 import asyncio
 import json
+import logging
 import re
 import websockets
 import winsound
@@ -249,6 +250,7 @@ async def snes_connect(ctx, address = None):
         return
 
     ctx.snes_state = SNES_CONNECTING
+    recv_task = None
 
     if address is None:
         address = 'ws://' + ctx.snes_address
@@ -298,28 +300,30 @@ async def snes_connect(ctx, address = None):
         await ctx.snes_socket.send(json.dumps(Attach_Request))
         ctx.snes_state = SNES_ATTACHED
 
-        asyncio.create_task(snes_recv_loop(ctx))
+        recv_task = asyncio.create_task(snes_recv_loop(ctx))
 
     except Exception as e:
         print("Error connecting to snes (%s)" % e)
-        if ctx.snes_state == SNES_CONNECTING:
+        if recv_task is not None:
+            if not ctx.snes_socket.closed:
+                await ctx.snes_socket.close()
+        else:
+            if ctx.snes_socket is not None:
+                if not ctx.snes_socket.closed:
+                    await ctx.snes_socket.close()
+                ctx.snes_socket = None
             ctx.snes_state = SNES_DISCONNECTED
-        if ctx.snes_socket is not None and not ctx.snes_socket.closed:
-            await ctx.snes_socket.close()
-        return
 
 async def snes_recv_loop(ctx):
-    requests_task = asyncio.create_task(snes_requests_loop(ctx))
     try:
         async for msg in ctx.snes_socket:
             ctx.snes_recv_queue.put_nowait(msg)
         print("Snes disconnected, type /snes to reconnect")
     except Exception as e:
-        print("Lost connection to the snes, type /snes to reconnect (Error: %s)" % e)
+        print("Lost connection to the snes, type /snes to reconnect")
+        if type(e) is not websockets.ConnectionClosed:
+            logging.exception(e)
     finally:
-        requests_task.cancel()
-        await requests_task
-
         socket, ctx.snes_socket = ctx.snes_socket, None
         if socket is not None and not socket.closed:
             await socket.close()
@@ -327,72 +331,72 @@ async def snes_recv_loop(ctx):
         ctx.snes_state = SNES_DISCONNECTED
         ctx.snes_recv_queue = asyncio.Queue()
 
-async def snes_requests_loop(ctx):
-    try:
-        ctx.snes_request_queue = asyncio.Queue()
-        while True:
-            co, fut = await ctx.snes_request_queue.get()
-            fut.set_result(await co)
-    except (asyncio.CancelledError, websockets.ConnectionClosed):
-        while not ctx.snes_request_queue.empty():
-            co, fut = ctx.snes_request_queue.get_nowait()
-            fut.set_result(None)
-    finally:
-        ctx.snes_request_queue = None
-
-async def snes_read_co(ctx, address, size):
-    if ctx.snes_socket is None or not ctx.snes_socket.open or ctx.snes_socket.closed:
-        return None
-
-    GetAddress_Request = {
-        "Opcode" : "GetAddress",
-        "Space" : "SNES",
-        "Operands" : [hex(address)[2:], hex(size)[2:]]
-    }
-    await ctx.snes_socket.send(json.dumps(GetAddress_Request))
-
-    data = bytes()
-    while len(data) < size:
-        data += await ctx.snes_recv_queue.get()
-
-    if len(data) != size:
-        print('Error reading %s, requested %d bytes, received %d' % (hex(address), size, len(data)))
-        return None
-
-    return data
-
 async def snes_read(ctx, address, size):
-    if ctx.snes_request_queue is None:
-        return None
-    future = asyncio.get_running_loop().create_future()
-    ctx.snes_request_queue.put_nowait((snes_read_co(ctx, address, size), future))
-    return await future
+    try:
+        await ctx.snes_request_lock.acquire()
 
-async def snes_write_co(ctx, address, data):
-    if ctx.snes_socket is None or not ctx.snes_socket.open or ctx.snes_socket.closed:
-        return False
+        if ctx.snes_state != SNES_ATTACHED or ctx.snes_socket is None or not ctx.snes_socket.open or ctx.snes_socket.closed:
+            return None
 
-    PutAddress_Request = {
-        "Opcode" : "PutAddress",
-        "Space" : "SNES",
-        "Operands" : [hex(address)[2:], hex(len(data))[2:]]
-    }
-    await ctx.snes_socket.send(json.dumps(PutAddress_Request))
-    await ctx.snes_socket.send(data)
+        GetAddress_Request = {
+            "Opcode" : "GetAddress",
+            "Space" : "SNES",
+            "Operands" : [hex(address)[2:], hex(size)[2:]]
+        }
+        try:
+            await ctx.snes_socket.send(json.dumps(GetAddress_Request))
+        except websockets.ConnectionClosed:
+            return None
 
-    return True
+        data = bytes()
+        while len(data) < size:
+            try:
+                data += await asyncio.wait_for(ctx.snes_recv_queue.get(), 5)
+            except asyncio.TimeoutError:
+                break
+
+        if len(data) != size:
+            print('Error reading %s, requested %d bytes, received %d' % (hex(address), size, len(data)))
+            if len(data):
+                print(str(data))
+            if ctx.snes_socket is not None and not ctx.snes_socket.closed:
+                await ctx.snes_socket.close()
+            return None
+
+        return data
+    finally:
+        ctx.snes_request_lock.release()
 
 async def snes_write(ctx, address, data):
-    if ctx.snes_request_queue is None:
-        return None
-    future = asyncio.get_running_loop().create_future()
-    ctx.snes_request_queue.put_nowait((snes_write_co(ctx, address, data), future))
-    return await future
+    try:
+        await ctx.snes_request_lock.acquire()
+
+        if ctx.snes_state != SNES_ATTACHED or ctx.snes_socket is None or not ctx.snes_socket.open or ctx.snes_socket.closed:
+            return False
+
+        PutAddress_Request = {
+            "Opcode" : "PutAddress",
+            "Space" : "SNES",
+            "Operands" : [hex(address)[2:], hex(len(data))[2:]]
+        }
+        try:
+            await ctx.snes_socket.send(json.dumps(PutAddress_Request))
+            if ctx.snes_socket is not None:
+                await ctx.snes_socket.send(data)
+        except websockets.ConnectionClosed:
+            pass
+
+        return True
+    finally:
+        ctx.snes_request_lock.release()
 
 async def send_msgs(websocket, msgs):
     if not websocket or not websocket.open or websocket.closed:
         return
-    await websocket.send(json.dumps(msgs))
+    try:
+        await websocket.send(json.dumps(msgs))
+    except websockets.ConnectionClosed:
+        pass
 
 async def server_loop(ctx):
     if ctx.socket is not None:
@@ -420,8 +424,12 @@ async def server_loop(ctx):
                     args = msg[1]
                 await process_server_cmd(ctx, cmd, args)
         print('Disconnected from multiworld server, type /connect to reconnect')
+    except ConnectionRefusedError:
+        print('Connection refused by the multiworld server')
     except Exception as e:
-        print('Disconnected from multiworld server, type /connect to reconnect (Error: %s)' % e)
+        print('Lost connection to the multiworld server, type /connect to reconnect')
+        if type(e) is not websockets.ConnectionClosed:
+            logging.exception(e)
     finally:
         ctx.name = None
         ctx.team = None
@@ -518,108 +526,100 @@ async def server_auth(ctx, password_requested):
     await send_msgs(ctx.socket, [['Connect', {'password': ctx.password, 'name': ctx.name, 'team': ctx.team, 'slot': ctx.slot}]])
 
 async def console(ctx):
-    try:
-        while True:
-            input = await aioconsole.ainput()
+    while True:
+        input = await aioconsole.ainput()
 
-            if ctx.input_requests > 0:
-                ctx.input_requests -= 1
-                ctx.input_queue.put_nowait(input)
-                continue
+        if ctx.input_requests > 0:
+            ctx.input_requests -= 1
+            ctx.input_queue.put_nowait(input)
+            continue
 
-            command = input.split()
-            if not command:
-                continue
+        command = input.split()
+        if not command:
+            continue
 
-            if command[0] == '/snes':
-                asyncio.create_task(snes_connect(ctx, command[1] if len(command) > 1 else None))
-            if command[0] in ['/snes_close', '/snes_quit']:
-                if ctx.snes_socket is not None and not ctx.snes_socket.closed:
-                    await ctx.snes_socket.close()
+        if command[0] == '/snes':
+            asyncio.create_task(snes_connect(ctx, command[1] if len(command) > 1 else None))
+        if command[0] in ['/snes_close', '/snes_quit']:
+            if ctx.snes_socket is not None and not ctx.snes_socket.closed:
+                await ctx.snes_socket.close()
 
-            async def disconnect():
-                if ctx.socket is not None and not ctx.socket.closed:
-                    await ctx.socket.close()
-                if ctx.server_task is not None:
-                    await ctx.server_task
-            async def connect():
-                await disconnect()
-                ctx.server_task = asyncio.create_task(server_loop(ctx))
+        async def disconnect():
+            if ctx.socket is not None and not ctx.socket.closed:
+                await ctx.socket.close()
+            if ctx.server_task is not None:
+                await ctx.server_task
+        async def connect():
+            await disconnect()
+            ctx.server_task = asyncio.create_task(server_loop(ctx))
 
-            if command[0] in ['/connect', '/reconnect']:
-                if len(command) > 1:
-                    ctx.server_address = command[1]
-                asyncio.create_task(connect())
-            if command[0] == '/disconnect':
-                asyncio.create_task(disconnect())
-            if command[0][:1] != '/':
-                asyncio.create_task(send_msgs(ctx.socket, [['Say', input]]))
+        if command[0] in ['/connect', '/reconnect']:
+            if len(command) > 1:
+                ctx.server_address = command[1]
+            asyncio.create_task(connect())
+        if command[0] == '/disconnect':
+            asyncio.create_task(disconnect())
+        if command[0][:1] != '/':
+            asyncio.create_task(send_msgs(ctx.socket, [['Say', input]]))
 
-            if command[0] == '/missing':
-                for location, (offset, mask) in location_table.items():
-                    if location not in ctx.locations_checked:
-                        print('Missing: ' + location)
-            if command[0] == '/maxkeys':
-                await snes_write(ctx, SAVEDATA_START + 0x364, b'\xFF\xFF\xFF\xFF\xFF\xFF')
-                await snes_write(ctx, SAVEDATA_START + 0x36F, b'\x63')
-                await snes_write(ctx, SAVEDATA_START + 0x37C, b'\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63')
-            if command[0] == '/nokey':
-                await snes_write(ctx, SAVEDATA_START + 0x364, b'\x00\x00\x00\x00\x00\x00')
-                await snes_write(ctx, SAVEDATA_START + 0x36F, b'\x00')
-                await snes_write(ctx, SAVEDATA_START + 0x37C, b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')
-            if command[0] == '/getitem' and len(command) > 1:
-                await inject_item(ctx, input[9:])
-
-    except asyncio.CancelledError:
-        pass
+        if command[0] == '/missing':
+            for location, (offset, mask) in location_table.items():
+                if location not in ctx.locations_checked:
+                    print('Missing: ' + location)
+        if command[0] == '/maxkeys':
+            await snes_write(ctx, SAVEDATA_START + 0x364, b'\xFF\xFF\xFF\xFF\xFF\xFF')
+            await snes_write(ctx, SAVEDATA_START + 0x36F, b'\x63')
+            await snes_write(ctx, SAVEDATA_START + 0x37C, b'\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63')
+        if command[0] == '/nokey':
+            await snes_write(ctx, SAVEDATA_START + 0x364, b'\x00\x00\x00\x00\x00\x00')
+            await snes_write(ctx, SAVEDATA_START + 0x36F, b'\x00')
+            await snes_write(ctx, SAVEDATA_START + 0x37C, b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')
+        if command[0] == '/getitem' and len(command) > 1:
+            await inject_item(ctx, input[9:])
 
 async def console_input(ctx):
     ctx.input_requests += 1
     return await ctx.input_queue.get()
 
 async def game_watcher(ctx):
-    try:
-        while True:
-            await asyncio.sleep(1)
+    while True:
+        await asyncio.sleep(1)
 
-            rom = await snes_read(ctx, ROMNAME_START, ROMNAME_SIZE)
-            if rom is None:
-                continue
-            if list(rom) != ctx.last_rom:
-                ctx.last_rom = list(rom)
-                ctx.locations_checked = set()
-            if ctx.expected_rom is not None and ctx.last_rom != ctx.expected_rom:
-                print("Wrong ROM detected")
-                await ctx.snes_socket.close()
-                continue
+        rom = await snes_read(ctx, ROMNAME_START, ROMNAME_SIZE)
+        if rom is None:
+            continue
+        if list(rom) != ctx.last_rom:
+            ctx.last_rom = list(rom)
+            ctx.locations_checked = set()
+        if ctx.expected_rom is not None and ctx.last_rom != ctx.expected_rom:
+            print("Wrong ROM detected")
+            await ctx.snes_socket.close()
+            continue
 
-            gamemode = await snes_read(ctx, WRAM_START + 0x10, 1)
-            if gamemode is None or gamemode[0] not in INGAME_MODES:
-                continue
+        gamemode = await snes_read(ctx, WRAM_START + 0x10, 1)
+        if gamemode is None or gamemode[0] not in INGAME_MODES:
+            continue
 
-            data = await snes_read(ctx, SAVEDATA_START, 0x412)
-            if data is None:
-                continue
-            for location, (offset, mask) in location_table.items():
-                if data[offset] & mask != 0 and location not in ctx.locations_checked:
-                    ctx.locations_checked.add(location)
-                    print("New check: %s (%d/216)" % (location, len(ctx.locations_checked)))
-                    await send_msgs(ctx.socket, [['LocationChecks', [location]]])
+        data = await snes_read(ctx, SAVEDATA_START, 0x412)
+        if data is None:
+            continue
+        for location, (offset, mask) in location_table.items():
+            if data[offset] & mask != 0 and location not in ctx.locations_checked:
+                ctx.locations_checked.add(location)
+                print("New check: %s (%d/216)" % (location, len(ctx.locations_checked)))
+                await send_msgs(ctx.socket, [['LocationChecks', [location]]])
 
-            data = await snes_read(ctx, RECV_PROGRESS_ADDR, 2)
-            if data is None:
-                continue
-            recv_index = data[0] + (data[1] * 0x100)
-            if recv_index < len(ctx.items_received):
-                item = ctx.items_received[recv_index]
-                winsound.PlaySound('itemget.wav', winsound.SND_FILENAME | winsound.SND_ASYNC)
-                print('Received %s from %s (Player %d) (%s)' % (item.name, item.player_name, item.player_id, item.location))
-                await inject_item(ctx, item.name)
-                recv_index += 1
-                await snes_write(ctx, RECV_PROGRESS_ADDR, bytes([recv_index & 0xFF, (recv_index >> 8) & 0xFF]))
-
-    except asyncio.CancelledError:
-        pass
+        data = await snes_read(ctx, RECV_PROGRESS_ADDR, 2)
+        if data is None:
+            continue
+        recv_index = data[0] + (data[1] * 0x100)
+        if recv_index < len(ctx.items_received):
+            item = ctx.items_received[recv_index]
+            winsound.PlaySound('itemget.wav', winsound.SND_FILENAME | winsound.SND_ASYNC)
+            print('Received %s from %s (Player %d) (%s)' % (item.name, item.player_name, item.player_id, item.location))
+            await inject_item(ctx, item.name)
+            recv_index += 1
+            await snes_write(ctx, RECV_PROGRESS_ADDR, bytes([recv_index & 0xFF, (recv_index >> 8) & 0xFF]))
 
 async def inject_item(ctx, name):
     inv_swap = {'Blue Boomerang': 0x80, 'Red Boomerang': 0x40, 'Mushroom': 0x20, 'Magic Powder': 0x10, 'Shovel': 0x04, 'Ocarina': 0x02}
@@ -871,7 +871,7 @@ class Context:
         self.snes_socket = None
         self.snes_state = SNES_DISCONNECTED
         self.snes_recv_queue = asyncio.Queue()
-        self.snes_request_queue = None
+        self.snes_request_lock = asyncio.Lock()
 
         self.server_task = None
         self.socket = None
@@ -887,4 +887,6 @@ class Context:
         self.expected_rom = None
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()
