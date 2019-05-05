@@ -167,31 +167,41 @@ def fill_restrictive(world, base_state, locations, itempool):
         return new_state
 
     while itempool and locations:
-        item_to_place = itempool.pop()
+        item_name = itempool[-1].name
+        items_to_place = []
+        placing_players = set()
+        nextpool = itempool.copy()
+        for index, item in enumerate(itempool):
+            if item.name == item_name and item.player not in placing_players:
+                placing_players.add(item.player)
+                nextpool.remove(item)
+                items_to_place.append(item)
+        itempool = nextpool
+
         maximum_exploration_state = sweep_from_pool()
 
         perform_access_check = True
         if world.check_beatable_only:
             perform_access_check = not world.has_beaten_game(maximum_exploration_state)
 
+        for item_to_place in items_to_place:
+            spot_to_fill = None
+            for location in locations:
+                if location.can_fill(maximum_exploration_state, item_to_place, perform_access_check):
+                    spot_to_fill = location
+                    break
 
-        spot_to_fill = None
-        for location in locations:
-            if location.can_fill(maximum_exploration_state, item_to_place, perform_access_check):
-                spot_to_fill = location
-                break
+            if spot_to_fill is None:
+                # we filled all reachable spots. Maybe the game can be beaten anyway?
+                if world.can_beat_game():
+                    if not world.check_beatable_only:
+                        logging.getLogger('').warning('Not all items placed. Game beatable anyway. (Could not place %s)' % item_to_place)
+                    continue
+                raise FillError('No more spots to place %s' % item_to_place)
 
-        if spot_to_fill is None:
-            # we filled all reachable spots. Maybe the game can be beaten anyway?
-            if world.can_beat_game():
-                if not world.check_beatable_only:
-                    logging.getLogger('').warning('Not all items placed. Game beatable anyway.')
-                break
-            raise FillError('No more spots to place %s' % item_to_place)
-
-        world.push_item(spot_to_fill, item_to_place, False)
-        locations.remove(spot_to_fill)
-        spot_to_fill.event = True
+            world.push_item(spot_to_fill, item_to_place, False)
+            locations.remove(spot_to_fill)
+            spot_to_fill.event = True
 
 
 def distribute_items_restrictive(world, gftower_trash_count=0, fill_locations=None):
