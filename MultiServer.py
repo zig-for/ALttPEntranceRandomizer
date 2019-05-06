@@ -4,6 +4,7 @@ import asyncio
 import functools
 import json
 import logging
+import pickle
 import re
 import urllib.request
 import websockets
@@ -92,6 +93,21 @@ async def on_client_joined(ctx, client):
 async def on_client_left(ctx, client):
     notify_all(ctx, "%s (Player %d, %s) has left the game" % (client.name, client.slot, "Default team" if not client.team else "Team %s" % client.team))
 
+def get_connected_players_string(ctx):
+    auth_clients = [c for c in ctx.clients if c.auth]
+    if not auth_clients:
+        return 'No player connected'
+
+    auth_clients.sort(key=lambda c: ('' if not c.team else c.team.lower(), c.slot))
+    current_team = 0
+    text = ''
+    for c in auth_clients:
+        if c.team != current_team:
+            text += '::' + ('default team' if not c.team else c.team) + ':: '
+            current_team = c.team
+        text += '%d:%s ' % (c.slot, c.name)
+    return 'Connected players: ' + text[:-1]
+
 def get_player_name_in_team(ctx, team, slot):
     for client in ctx.clients:
         if client.auth and same_team(team, client.team) and client.slot == slot:
@@ -129,6 +145,7 @@ def forfeit_player(ctx, team, slot, name):
     register_location_checks(ctx, name, team, slot, all_locations)
 
 def register_location_checks(ctx, name, team, slot, locations):
+    found_items = False
     for location in locations:
         if (location, slot) in ctx.spoiler:
             target_item, target_player = ctx.spoiler[(location, slot)]
@@ -142,8 +159,16 @@ def register_location_checks(ctx, name, team, slot, locations):
                 if not found:
                     new_item = ReceivedItem(target_item, location, slot, name)
                     recvd_items.append(new_item)
-                    notify_team(ctx, team, '(Team) %s sent "%s" to %s (%s)' % (name, target_item, get_player_name_in_team(ctx, team, target_player), location))
+                    broadcast_team(ctx, team, [['ItemSent', (name, get_player_name_in_team(ctx, team, target_player), target_item, location)]])
+                    found_items = True
     send_new_items(ctx)
+
+    if found_items and not ctx.disable_save:
+        try:
+            with open(ctx.save_filename, "wb") as f:
+                pickle.dump((ctx.players, ctx.rom_names, ctx.received_items), f, pickle.HIGHEST_PROTOCOL)
+        except Exception as e:
+            logging.exception(e)
 
 async def process_client_cmd(ctx, client, cmd, args):
     if type(cmd) is not str:
@@ -227,16 +252,7 @@ async def process_client_cmd(ctx, client, cmd, args):
         notify_all(ctx, client.name + ': ' + args)
 
         if args[:8] == '!players':
-            auth_clients = [c for c in ctx.clients if c.auth]
-            auth_clients.sort(key=lambda c: ('' if not c.team else c.team.lower(), c.name))
-            current_team = 0
-            text = ''
-            for c in auth_clients:
-                if c.team != current_team:
-                    text += '::' + ('default team' if not c.team else c.team) + ':: '
-                    current_team = c.team
-                text += '%d:%s ' % (c.slot, c.name)
-            notify_all(ctx, 'Connected players: ' + text[:-1])
+            notify_all(ctx, get_connected_players_string(ctx))
         if args[:8] == '!forfeit':
             forfeit_player(ctx, client.team, client.slot, client.name)
 
@@ -252,6 +268,12 @@ async def console(ctx):
         if not command:
             continue
 
+        if command[0] == '/exit':
+            ctx.server.ws_server.close()
+            break
+
+        if command[0] == '/players':
+            print(get_connected_players_string(ctx))
         if command[0] == '/password':
             set_password(ctx, command[1] if len(command) > 1 else None)
         if command[0] == '/kick' and len(command) > 1:
@@ -280,18 +302,32 @@ async def console(ctx):
             else:
                 print("Unknown item: " + item)
 
+        if command[0][0] != '/':
+            notify_all(ctx, '[Server]: ' + input)
+
 async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--host', default=None)
     parser.add_argument('--port', default=38281, type=int)
     parser.add_argument('--password', default=None)
+    parser.add_argument('--multidata', default=None)
+    parser.add_argument('--savefile', default=None)
+    parser.add_argument('--disable_save', default=False, action='store_true')
     args = parser.parse_args()
 
     ctx = Context(args.host, args.port, args.password)
-    ctx.server = websockets.serve(functools.partial(server,ctx=ctx), ctx.host, ctx.port)
+
+    ctx.data_filename = args.multidata
 
     try:
-        with open('multidata') as f:
+        if not ctx.data_filename:
+            import tkinter
+            import tkinter.filedialog
+            root = tkinter.Tk()
+            root.withdraw()
+            ctx.data_filename = tkinter.filedialog.askopenfilename(filetypes=(("Multiworld data","*multidata"),))
+
+        with open(ctx.data_filename) as f:
             item_table = dict()
             for name, values in Items.item_table.items():
                 if type(values[3]) is int:
@@ -313,11 +349,28 @@ async def main():
                     ctx.spoiler[(location_table[int(address)], player)] = (item_table[item_code], item_player)
     except Exception as e:
         print('Failed to read multiworld data (%s)' % e)
-        raise e
+        return
 
     ip = urllib.request.urlopen('https://v4.ident.me').read().decode('utf8') if not ctx.host else ctx.host
     print('Hosting game of %d players (%s) at %s:%d' % (ctx.players, 'No password' if not ctx.password else 'Password: %s' % ctx.password, ip, ctx.port))
 
+    ctx.disable_save = args.disable_save
+    if not ctx.disable_save:
+        if not ctx.save_filename:
+            ctx.save_filename = (ctx.data_filename[:-9] if ctx.data_filename[-9:] == 'multidata' else (ctx.data_filename + '_')) + 'multisave'
+        try:
+            with open(ctx.save_filename, 'rb') as f:
+                players, rom_names, received_items = pickle.load(f)
+                if players != ctx.players or rom_names != ctx.rom_names:
+                    raise Exception('Save file mismatch, will start a new game')
+                ctx.received_items = received_items
+                print('Loaded save file with %d received items for %d players' % (sum([len(p) for p in received_items.values()]), len(received_items)))
+        except FileNotFoundError:
+            print('No save data found, starting a new game')
+        except Exception as e:
+            print(e)
+
+    ctx.server = websockets.serve(functools.partial(server,ctx=ctx), ctx.host, ctx.port, ping_timeout=None)
     await ctx.server
     await console(ctx)
 
@@ -332,6 +385,9 @@ class Client:
 
 class Context:
     def __init__(self, host, port, password):
+        self.data_filename = None
+        self.save_filename = None
+        self.disable_save = False
         self.players = None
         self.rom_names = {}
         self.spoiler = {}
@@ -345,4 +401,5 @@ class Context:
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
+    loop.run_until_complete(asyncio.gather(*asyncio.Task.all_tasks()))
     loop.close()

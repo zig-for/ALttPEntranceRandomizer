@@ -144,6 +144,9 @@ def main(args, seed=None):
                                world.get_filled_locations(player) if type(location.address) is int}
             f.write(json.dumps(out))
 
+    if args.create_spoiler and not args.jsonout:
+        world.spoiler.to_file(output_path('%s_Spoiler.txt' % outfilebase))
+
     logger.info('Calculating playthrough.')
 
     if not args.skip_playthrough:
@@ -151,7 +154,7 @@ def main(args, seed=None):
 
     if args.jsonout:
         print(json.dumps({**jsonout, 'spoiler': world.spoiler.to_json()}))
-    elif args.create_spoiler:
+    elif args.create_spoiler and not args.skip_playthrough:
         world.spoiler.to_file(output_path('%s_Spoiler.txt' % outfilebase))
 
     logger.info('Done. Enjoy.')
