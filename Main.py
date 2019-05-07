@@ -78,8 +78,7 @@ def main(args, seed=None):
 
     logger.info('Placing Dungeon Prizes.')
 
-    for player in range(1, world.players + 1):
-        fill_prizes(world, player)
+    fill_prizes(world)
 
     logger.info('Placing Dungeon Items.')
 
@@ -147,9 +146,8 @@ def main(args, seed=None):
     if args.create_spoiler and not args.jsonout:
         world.spoiler.to_file(output_path('%s_Spoiler.txt' % outfilebase))
 
-    logger.info('Calculating playthrough.')
-
     if not args.skip_playthrough:
+        logger.info('Calculating playthrough.')
         create_playthrough(world)
 
     if args.jsonout:

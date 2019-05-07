@@ -232,6 +232,10 @@ def distribute_items_restrictive(world, gftower_trash_count=0, fill_locations=No
     random.shuffle(fill_locations)
     fill_locations.reverse()
 
+    # Make sure the escape small key is placed first in standard keysanity to prevent running out of spots
+    if world.keysanity and world.mode == 'standard':
+        progitempool.sort(key=lambda item: 1 if item.name == 'Small Key (Escape)' else 0)
+
     fill_restrictive(world, world.state, fill_locations, progitempool)
 
     random.shuffle(fill_locations)

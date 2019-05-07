@@ -343,31 +343,33 @@ def create_dynamic_shop_locations(world, player):
                     loc.event = True
 
 
-def fill_prizes(world, player, attempts=15):
-    crystals = ItemFactory(['Red Pendant', 'Blue Pendant', 'Green Pendant', 'Crystal 1', 'Crystal 2', 'Crystal 3', 'Crystal 4', 'Crystal 7', 'Crystal 5', 'Crystal 6'], player)
-    crystal_locations = [world.get_location('Turtle Rock - Prize', player), world.get_location('Eastern Palace - Prize', player), world.get_location('Desert Palace - Prize', player), world.get_location('Tower of Hera - Prize', player), world.get_location('Palace of Darkness - Prize', player),
-                         world.get_location('Thieves\' Town - Prize', player), world.get_location('Skull Woods - Prize', player), world.get_location('Swamp Palace - Prize', player), world.get_location('Ice Palace - Prize', player),
-                         world.get_location('Misery Mire - Prize', player)]
-    placed_prizes = [loc.item.name for loc in crystal_locations if loc.item is not None]
-    unplaced_prizes = [crystal for crystal in crystals if crystal.name not in placed_prizes]
-    empty_crystal_locations = [loc for loc in crystal_locations if loc.item is None]
+def fill_prizes(world, attempts=15):
+    all_state = world.get_all_state(keys=True)
+    for player in range(1, world.players + 1):
+        crystals = ItemFactory(['Red Pendant', 'Blue Pendant', 'Green Pendant', 'Crystal 1', 'Crystal 2', 'Crystal 3', 'Crystal 4', 'Crystal 7', 'Crystal 5', 'Crystal 6'], player)
+        crystal_locations = [world.get_location('Turtle Rock - Prize', player), world.get_location('Eastern Palace - Prize', player), world.get_location('Desert Palace - Prize', player), world.get_location('Tower of Hera - Prize', player), world.get_location('Palace of Darkness - Prize', player),
+                             world.get_location('Thieves\' Town - Prize', player), world.get_location('Skull Woods - Prize', player), world.get_location('Swamp Palace - Prize', player), world.get_location('Ice Palace - Prize', player),
+                             world.get_location('Misery Mire - Prize', player)]
+        placed_prizes = [loc.item.name for loc in crystal_locations if loc.item is not None]
+        unplaced_prizes = [crystal for crystal in crystals if crystal.name not in placed_prizes]
+        empty_crystal_locations = [loc for loc in crystal_locations if loc.item is None]
 
-    while attempts:
-        attempts -= 1
-        try:
-            prizepool = list(unplaced_prizes)
-            prize_locs = list(empty_crystal_locations)
-            random.shuffle(prizepool)
-            random.shuffle(prize_locs)
-            fill_restrictive(world, world.get_all_state(keys=True), prize_locs, prizepool)
-        except FillError as e:
-            logging.getLogger('').info("Failed to place dungeon prizes (%s). Will retry %s more times" % (e, attempts))
-            for location in empty_crystal_locations:
-                location.item = None
-            continue
-        break
-    else:
-        raise FillError('Unable to place dungeon prizes')
+        while attempts:
+            attempts -= 1
+            try:
+                prizepool = list(unplaced_prizes)
+                prize_locs = list(empty_crystal_locations)
+                random.shuffle(prizepool)
+                random.shuffle(prize_locs)
+                fill_restrictive(world, all_state, prize_locs, prizepool)
+            except FillError as e:
+                logging.getLogger('').info("Failed to place dungeon prizes (%s). Will retry %s more times" % (e, attempts))
+                for location in empty_crystal_locations:
+                    location.item = None
+                continue
+            break
+        else:
+            raise FillError('Unable to place dungeon prizes')
 
 
 def set_up_shops(world, player):

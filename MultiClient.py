@@ -485,6 +485,10 @@ async def send_msgs(websocket, msgs):
     except websockets.ConnectionClosed:
         pass
 
+def rom_confirmed(ctx):
+    ctx.rom_confirmed = True
+    print('ROM hash Confirmed')
+
 async def server_loop(ctx):
     if ctx.socket is not None:
         print('Already connected')
@@ -575,13 +579,12 @@ async def process_server_cmd(ctx, cmd, args):
 
     if cmd == 'Connected':
         ctx.expected_rom = args
-        if ctx.last_rom is not None:
-            if ctx.last_rom != ctx.expected_rom:
-                raise Exception('Different ROM expected from server')
-            else:
-                ctx.rom_confirmed = True
-        if ctx.locations_checked:
-            await send_msgs(ctx.socket, [['LocationChecks', list(ctx.locations_checked)]])
+        if ctx.last_rom == ctx.expected_rom:
+            rom_confirmed(ctx)
+            if ctx.locations_checked:
+                await send_msgs(ctx.socket, [['LocationChecks', list(ctx.locations_checked)]])
+        elif ctx.last_rom is not None:
+            raise Exception('Different ROM expected from server')
 
     if cmd == 'ReceivedItems':
         start_index, items = args
@@ -598,7 +601,10 @@ async def process_server_cmd(ctx, cmd, args):
 
     if cmd == 'ItemSent':
         player_sent, player_recvd, item, location = args
-        print('(%s) %s sent %s to %s (%s)' % (ctx.team if ctx.team else 'Team', color(player_sent, 'yellow'), color(item, 'blue' if player_sent == ctx.name else 'green'), color(player_recvd, 'yellow'), location))
+        item = color(item, 'cyan' if player_sent != ctx.name else 'green')
+        player_sent = color(player_sent, 'yellow' if player_sent != ctx.name else 'magenta')
+        player_recvd = color(player_recvd, 'yellow' if player_recvd != ctx.name else 'magenta')
+        print('(%s) %s sent %s to %s (%s)' % (ctx.team if ctx.team else 'Team', player_sent, item, player_recvd, location))
 
     if cmd == 'Print':
         print(args)
@@ -670,6 +676,11 @@ async def console_loop(ctx):
         if command[0][:1] != '/':
             asyncio.create_task(send_msgs(ctx.socket, [['Say', input]]))
 
+        if command[0] == '/received':
+            print('Received items:')
+            for index, item in enumerate(ctx.items_received, 1):
+                print('%s from %s (%s) (%d/%d in list)' % (color(item.name, 'red', 'bold'), color(item.player_name, 'yellow'), item.location, index, len(ctx.items_received)))
+
         if command[0] == '/missing':
             for location in location_table.keys():
                 if location not in ctx.locations_checked:
@@ -695,7 +706,7 @@ async def game_watcher(ctx):
 
         if not ctx.rom_confirmed:
             rom = await snes_read(ctx, ROMNAME_START, ROMNAME_SIZE)
-            if rom is None:
+            if rom is None or rom == bytes([0] * ROMNAME_SIZE):
                 continue
             if list(rom) != ctx.last_rom:
                 ctx.last_rom = list(rom)
@@ -706,7 +717,7 @@ async def game_watcher(ctx):
                     await ctx.snes_socket.close()
                     continue
                 else:
-                    ctx.rom_confirmed = True
+                    rom_confirmed(ctx)
 
         gamemode = await snes_read(ctx, WRAM_START + 0x10, 1)
         if gamemode is None or gamemode[0] not in INGAME_MODES:

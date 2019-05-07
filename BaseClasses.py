@@ -338,11 +338,11 @@ class CollectionState(object):
         self.locations_checked = set()
 
 
-    def clear_cached_unreachable(self):
+    def clear_cached_unreachable(self, player=None):
         # we only need to invalidate results which were False, places we could reach before we can still reach after adding more items
-        self.region_cache = {k: v for k, v in self.region_cache.items() if v}
-        self.location_cache = {k: v for k, v in self.location_cache.items() if v}
-        self.entrance_cache = {k: v for k, v in self.entrance_cache.items() if v}
+        self.region_cache = {k: v for k, v in self.region_cache.items() if v or (player and k.player != player)}
+        self.location_cache = {k: v for k, v in self.location_cache.items() if v or (player and k.player != player)}
+        self.entrance_cache = {k: v for k, v in self.entrance_cache.items() if v or (player and k.player != player)}
 
     def copy(self):
         ret = CollectionState(self.world)
@@ -577,10 +577,9 @@ class CollectionState(object):
             changed = True
 
         if changed:
-            self.clear_cached_unreachable()
+            self.clear_cached_unreachable(player=item.player)
             if not event:
                 self.sweep_for_events()
-                self.clear_cached_unreachable()
 
     def remove(self, item):
         if item.advancement:
@@ -668,7 +667,7 @@ class Region(object):
         is_dungeon_item = item.key or item.map or item.compass
         sewer_hack = self.world.mode == 'standard' and item.name == 'Small Key (Escape)'
         if sewer_hack or (is_dungeon_item and not self.world.keysanity):
-            return self.dungeon and self.dungeon.is_dungeon_item(item) and item.player == self.player
+            return self.dungeon and self.dungeon.is_dungeon_item(item) and (item.player == self.player or self.world.keysanity)
 
         return True
 
@@ -947,6 +946,7 @@ class Spoiler(object):
             self.locations['Other Locations'] = OrderedDict([(str(location), str(location.item) if location.item is not None else 'Nothing') for location in other_locations])
             listed_locations.update(other_locations)
 
+        self.shops = []
         for shop in self.world.shops:
             if not shop.active:
                 continue

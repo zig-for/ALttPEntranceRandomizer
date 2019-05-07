@@ -6,7 +6,7 @@ import os
 import struct
 import random
 
-from BaseClasses import ShopType
+from BaseClasses import ShopType, Region, Location, Item
 from Dungeons import dungeon_music_addresses
 from Text import MultiByteTextMapper, text_addresses, Credits, TextTable
 from Text import Uncle_texts, Ganon1_texts, TavernMan_texts, Sahasrahla2_texts, Triforce_texts, Blind_texts, BombShop2_texts, junk_texts
@@ -1036,6 +1036,17 @@ def write_strings(rom, world, player):
         tt['kakariko_flophouse_man_no_flippers'] = 'I really hate mowing my yard.\n{PAGEBREAK}\nI should move.'
         tt['kakariko_flophouse_man'] = 'I really hate mowing my yard.\n{PAGEBREAK}\nI should move.'
 
+    def hint_text(dest, ped_hint=False):
+        hint = dest.hint_text if not ped_hint else dest.pedestal_hint_text
+        if dest.player != player:
+            if ped_hint:
+                hint += " for p%d!" % dest.player
+            elif type(dest) in [Region, Location]:
+                hint += " in p%d's world" % dest.player
+            elif type(dest) is Item:
+                hint = "p%d' %s" % (dest.player, hint)
+        return hint
+
     # For hints, first we write hints about entrances, some from the inconvenient list others from all reasonable entrances.
     if world.hints:
         tt['sign_north_of_links_house'] = '> Randomizer The telepathic tiles can have hints!'
@@ -1047,10 +1058,10 @@ def write_strings(rom, world, player):
         random.shuffle(hint_locations)
         all_entrances = [entrance for entrance in world.get_entrances() if entrance.player == player]
         random.shuffle(all_entrances)
-        hint_count = 4
+        hint_count = 4 if world.shuffle is not 'vanilla' else 0
         for entrance in all_entrances:
             if entrance.name in entrances_to_hint:
-                this_hint = entrances_to_hint[entrance.name] + ' leads to ' + entrance.connected_region.hint_text + '.'
+                this_hint = entrances_to_hint[entrance.name] + ' leads to ' + hint_text(entrance.connected_region) + '.'
                 tt[hint_locations.pop(0)] = this_hint
                 entrances_to_hint.pop(entrance.name)
                 hint_count -= 1
@@ -1062,10 +1073,10 @@ def write_strings(rom, world, player):
             entrances_to_hint.update(InsanityEntrances)
             if world.shuffle_ganon:
                 entrances_to_hint.update({'Pyramid Ledge': 'The pyramid ledge'})
-        hint_count = 4
+        hint_count = 4 if world.shuffle is not 'vanilla' else 0
         for entrance in all_entrances:
             if entrance.name in entrances_to_hint:
-                this_hint = entrances_to_hint[entrance.name] + ' leads to ' + entrance.connected_region.hint_text + '.'
+                this_hint = entrances_to_hint[entrance.name] + ' leads to ' + hint_text(entrance.connected_region) + '.'
                 tt[hint_locations.pop(0)] = this_hint
                 entrances_to_hint.pop(entrance.name)
                 hint_count -= 1
@@ -1075,44 +1086,44 @@ def write_strings(rom, world, player):
         # Next we write a few hints for specific inconvenient locations. We don't make many because in entrance this is highly unpredictable.
         locations_to_hint = InconvenientLocations.copy()
         random.shuffle(locations_to_hint)
-        hint_count = 3
+        hint_count = 3 if world.shuffle is not 'vanilla' else 4
         del locations_to_hint[hint_count:]   
         for location in locations_to_hint:
             if location == 'Swamp Left':
                 if random.randint(0, 1) == 0:
-                    first_item = world.get_location('Swamp Palace - West Chest', player).item.hint_text
-                    second_item = world.get_location('Swamp Palace - Big Key Chest', player).item.hint_text
+                    first_item = hint_text(world.get_location('Swamp Palace - West Chest', player).item)
+                    second_item = hint_text(world.get_location('Swamp Palace - Big Key Chest', player).item)
                 else:
-                    second_item = world.get_location('Swamp Palace - West Chest', player).item.hint_text
-                    first_item = world.get_location('Swamp Palace - Big Key Chest', player).item.hint_text
+                    second_item = hint_text(world.get_location('Swamp Palace - West Chest', player).item)
+                    first_item = hint_text(world.get_location('Swamp Palace - Big Key Chest', player).item)
                 this_hint = ('The westmost chests in Swamp Palace contain ' + first_item + ' and ' + second_item + '.')
                 tt[hint_locations.pop(0)] = this_hint
             elif location == 'Mire Left':
                 if random.randint(0, 1) == 0:
-                    first_item = world.get_location('Misery Mire - Compass Chest', player).item.hint_text
-                    second_item = world.get_location('Misery Mire - Big Key Chest', player).item.hint_text
+                    first_item = hint_text(world.get_location('Misery Mire - Compass Chest', player).item)
+                    second_item = hint_text(world.get_location('Misery Mire - Big Key Chest', player).item)
                 else:
-                    second_item = world.get_location('Misery Mire - Compass Chest', player).item.hint_text
-                    first_item = world.get_location('Misery Mire - Big Key Chest', player).item.hint_text
+                    second_item = hint_text(world.get_location('Misery Mire - Compass Chest', player).item)
+                    first_item = hint_text(world.get_location('Misery Mire - Big Key Chest', player).item)
                 this_hint = ('The westmost chests in Misery Mire contain ' + first_item + ' and ' + second_item + '.')
                 tt[hint_locations.pop(0)] = this_hint
             elif location == 'Tower of Hera - Big Key Chest':
-                this_hint = 'Waiting in the Tower of Hera basement leads to ' + world.get_location(location, player).item.hint_text + '.'
+                this_hint = 'Waiting in the Tower of Hera basement leads to ' + hint_text(world.get_location(location, player).item) + '.'
                 tt[hint_locations.pop(0)] = this_hint
             elif location == 'Ganons Tower - Big Chest':
-                this_hint = 'The big chest in Ganon\'s Tower contains ' + world.get_location(location, player).item.hint_text + '.'
+                this_hint = 'The big chest in Ganon\'s Tower contains ' + hint_text(world.get_location(location, player).item) + '.'
                 tt[hint_locations.pop(0)] = this_hint
             elif location == 'Thieves\' Town - Big Chest':
-                this_hint = 'The big chest in Thieves\' Town contains ' + world.get_location(location, player).item.hint_text + '.'
+                this_hint = 'The big chest in Thieves\' Town contains ' + hint_text(world.get_location(location, player).item) + '.'
                 tt[hint_locations.pop(0)] = this_hint
             elif location == 'Ice Palace - Big Chest':
-                this_hint = 'The big chest in Ice Palace contains ' + world.get_location(location, player).item.hint_text + '.'
+                this_hint = 'The big chest in Ice Palace contains ' + hint_text(world.get_location(location, player).item) + '.'
                 tt[hint_locations.pop(0)] = this_hint
             elif location == 'Eastern Palace - Big Key Chest':
-                this_hint = 'The antifairy guarded chest in Eastern Palace contains ' + world.get_location(location, player).item.hint_text + '.'
+                this_hint = 'The antifairy guarded chest in Eastern Palace contains ' + hint_text(world.get_location(location, player).item) + '.'
                 tt[hint_locations.pop(0)] = this_hint
             else:
-                this_hint = location + ' leads to ' + world.get_location(location, player).item.hint_text + '.'
+                this_hint = location + ' leads to ' + hint_text(world.get_location(location, player).item) + '.'
                 tt[hint_locations.pop(0)] = this_hint
 
         # Lastly we write hints to show where certain interesting items are. It is done the way it is to re-use the silver code and also to give one hint per each type of item regardless of how many exist. This supports many settings well.
@@ -1120,13 +1131,13 @@ def write_strings(rom, world, player):
         if world.keysanity:
             items_to_hint.extend(KeysanityItems)
         random.shuffle(items_to_hint)
-        hint_count = 5
+        hint_count = 5 if world.shuffle is not 'vanilla' else 7
         while(hint_count > 0):
             this_item = items_to_hint.pop(0)
             this_location = world.find_items(this_item, player)
             random.shuffle(this_location)
             if this_location:
-                this_hint = this_location[0].item.hint_text + ' can be found ' + this_location[0].hint_text + '.'
+                this_hint = this_location[0].item.hint_text + ' can be found ' + hint_text(this_location[0]) + '.'
                 tt[hint_locations.pop(0)] = this_hint
                 hint_count -= 1
             else:
@@ -1141,7 +1152,7 @@ def write_strings(rom, world, player):
    # We still need the older hints of course. Those are done here.
     silverarrows = world.find_items('Silver Arrows', player)
     random.shuffle(silverarrows)
-    silverarrow_hint = (' %s?' % silverarrows[0].hint_text.replace('Ganon\'s', 'my')) if silverarrows else '?\nI think not!'
+    silverarrow_hint = (' %s?' % hint_text(silverarrows[0]).replace('Ganon\'s', 'my')) if silverarrows else '?\nI think not!'
     tt['ganon_phase_3'] = 'Did you find the silver arrows%s' % silverarrow_hint
 
     crystal5 = world.find_items('Crystal 5', player)[0]
@@ -1169,15 +1180,15 @@ def write_strings(rom, world, player):
     tt['kakariko_tavern_fisherman'] = TavernMan_texts[random.randint(0, len(TavernMan_texts) - 1)]
 
     pedestalitem = world.get_location('Master Sword Pedestal', player).item
-    pedestal_text = 'Some Hot Air' if pedestalitem is None else pedestalitem.pedestal_hint_text if pedestalitem.pedestal_hint_text is not None else 'Unknown Item'
+    pedestal_text = 'Some Hot Air' if pedestalitem is None else hint_text(pedestalitem, True) if pedestalitem.pedestal_hint_text is not None else 'Unknown Item'
     tt['mastersword_pedestal_translated'] = pedestal_text
     pedestal_credit_text = 'and the Hot Air' if pedestalitem is None else pedestalitem.pedestal_credit_text if pedestalitem.pedestal_credit_text is not None else 'and the Unknown Item'
 
     etheritem = world.get_location('Ether Tablet', player).item
-    ether_text = 'Some Hot Air' if etheritem is None else etheritem.pedestal_hint_text if etheritem.pedestal_hint_text is not None else 'Unknown Item'
+    ether_text = 'Some Hot Air' if etheritem is None else hint_text(etheritem, True) if etheritem.pedestal_hint_text is not None else 'Unknown Item'
     tt['tablet_ether_book'] = ether_text
     bombositem = world.get_location('Bombos Tablet', player).item
-    bombos_text = 'Some Hot Air' if bombositem is None else bombositem.pedestal_hint_text if bombositem.pedestal_hint_text is not None else 'Unknown Item'
+    bombos_text = 'Some Hot Air' if bombositem is None else hint_text(bombositem, True) if bombositem.pedestal_hint_text is not None else 'Unknown Item'
     tt['tablet_bombos_book'] = bombos_text
 
     rom.write_bytes(0xE0000, tt.getBytes())
