@@ -6,6 +6,9 @@ import re
 import subprocess
 import sys
 
+import Items
+import Regions
+
 while True:
     try:
         import aioconsole
@@ -27,14 +30,47 @@ while True:
         subprocess.call([sys.executable, '-m', 'pip', 'install', '--upgrade', 'websockets'])
 
 try:
-    import winsound
-except ImportError:
-    winsound = None
-
-try:
     import colorama
 except ImportError:
     colorama = None
+
+class ReceivedItem:
+    def __init__(self, item, location, player_id, player_name):
+        self.item = item
+        self.location = location
+        self.player_id = player_id
+        self.player_name = player_name
+
+class Context:
+    def __init__(self, snes_address, server_address, password, name, team, slot):
+        self.snes_address = snes_address
+        self.server_address = server_address
+
+        self.exit_event = asyncio.Event()
+
+        self.input_queue = asyncio.Queue()
+        self.input_requests = 0
+
+        self.snes_socket = None
+        self.snes_state = SNES_DISCONNECTED
+        self.snes_recv_queue = asyncio.Queue()
+        self.snes_request_lock = asyncio.Lock()
+        self.is_sd2snes = False
+        self.snes_write_buffer = []
+
+        self.server_task = None
+        self.socket = None
+        self.password = password
+
+        self.name = name
+        self.team = team
+        self.slot = slot
+
+        self.locations_checked = set()
+        self.items_received = []
+        self.last_rom = None
+        self.expected_rom = None
+        self.rom_confirmed = False
 
 def color_code(*args):
     codes = {'reset': 0, 'bold': 1, 'underline': 4, 'black': 30, 'red': 31, 'green': 32, 'yellow': 33, 'blue': 34,
@@ -54,12 +90,14 @@ SRAM_START = 0xE00000
 ROMNAME_START = SRAM_START + 0x2000
 ROMNAME_SIZE = 0x15
 
-INGAME_MODES = {0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x15, 0x16, 0x18, 0x19}
+INGAME_MODES = {0x07, 0x09}
 
 SAVEDATA_START = WRAM_START + 0xF000
 SAVEDATA_SIZE = 0x500
 
 RECV_PROGRESS_ADDR = SAVEDATA_START + 0x4D0 # 2 bytes
+RECV_ITEM_ADDR = SAVEDATA_START + 0x4D2     # 1 byte
+
 
 location_table = {'Mushroom': (0x411, 0x10),
                   'Bottle Merchant': (0x3C9, 0x02),
@@ -284,7 +322,7 @@ SNES_CONNECTING = 1
 SNES_CONNECTED = 2
 SNES_ATTACHED = 3
 
-async def snes_connect(ctx, address = None):
+async def snes_connect(ctx : Context, address = None):
     if ctx.snes_socket is not None:
         print('Already connected to snes')
         return
@@ -343,6 +381,10 @@ async def snes_connect(ctx, address = None):
         if 'SD2SNES'.lower() in device.lower():
             print("SD2SNES Detected")
             ctx.is_sd2snes = True
+            await ctx.snes_socket.send(json.dumps({"Opcode" : "Info", "Space" : "SNES"}))
+            reply = json.loads(await ctx.snes_socket.recv())
+            if reply and 'Results' in reply:
+                print(reply['Results'])
         else:
             ctx.is_sd2snes = False
 
@@ -360,7 +402,7 @@ async def snes_connect(ctx, address = None):
                 ctx.snes_socket = None
             ctx.snes_state = SNES_DISCONNECTED
 
-async def snes_recv_loop(ctx):
+async def snes_recv_loop(ctx : Context):
     try:
         async for msg in ctx.snes_socket:
             ctx.snes_recv_queue.put_nowait(msg)
@@ -377,7 +419,7 @@ async def snes_recv_loop(ctx):
         ctx.snes_state = SNES_DISCONNECTED
         ctx.snes_recv_queue = asyncio.Queue()
 
-async def snes_read(ctx, address, size):
+async def snes_read(ctx : Context, address, size):
     try:
         await ctx.snes_request_lock.acquire()
 
@@ -413,7 +455,7 @@ async def snes_read(ctx, address, size):
     finally:
         ctx.snes_request_lock.release()
 
-async def snes_write(ctx, write_list):
+async def snes_write(ctx : Context, write_list):
     try:
         await ctx.snes_request_lock.acquire()
 
@@ -467,10 +509,10 @@ async def snes_write(ctx, write_list):
     finally:
         ctx.snes_request_lock.release()
 
-def snes_buffered_write(ctx, address, data):
+def snes_buffered_write(ctx : Context, address, data):
     ctx.snes_write_buffer.append((address, data))
 
-async def snes_flush_writes(ctx):
+async def snes_flush_writes(ctx : Context):
     if not ctx.snes_write_buffer:
         return
 
@@ -485,11 +527,11 @@ async def send_msgs(websocket, msgs):
     except websockets.ConnectionClosed:
         pass
 
-def rom_confirmed(ctx):
+def rom_confirmed(ctx : Context):
     ctx.rom_confirmed = True
     print('ROM hash Confirmed')
 
-async def server_loop(ctx):
+async def server_loop(ctx : Context):
     if ctx.socket is not None:
         print('Already connected')
         return
@@ -532,7 +574,7 @@ async def server_loop(ctx):
             await socket.close()
         ctx.server_task = None
 
-async def process_server_cmd(ctx, cmd, args):
+async def process_server_cmd(ctx : Context, cmd, args):
     if cmd == 'RoomInfo':
         print('--------------------------------')
         print('Room Information:')
@@ -582,7 +624,7 @@ async def process_server_cmd(ctx, cmd, args):
         if ctx.last_rom == ctx.expected_rom:
             rom_confirmed(ctx)
             if ctx.locations_checked:
-                await send_msgs(ctx.socket, [['LocationChecks', list(ctx.locations_checked)]])
+                await send_msgs(ctx.socket, [['LocationChecks', [Regions.location_table[loc][0] for loc in ctx.locations_checked]]])
         elif ctx.last_rom is not None:
             raise Exception('Different ROM expected from server')
 
@@ -593,7 +635,7 @@ async def process_server_cmd(ctx, cmd, args):
         elif start_index != len(ctx.items_received):
             sync_msg = [['Sync']]
             if ctx.locations_checked:
-                sync_msg.append(['LocationChecks', list(ctx.locations_checked)])
+                sync_msg.append(['LocationChecks', [Regions.location_table[loc][0] for loc in ctx.locations_checked]])
             await send_msgs(ctx.socket, sync_msg)
         if start_index == len(ctx.items_received):
             for item in items:
@@ -601,15 +643,15 @@ async def process_server_cmd(ctx, cmd, args):
 
     if cmd == 'ItemSent':
         player_sent, player_recvd, item, location = args
-        item = color(item, 'cyan' if player_sent != ctx.name else 'green')
+        item = color(get_item_name_from_id(item), 'cyan' if player_sent != ctx.name else 'green')
         player_sent = color(player_sent, 'yellow' if player_sent != ctx.name else 'magenta')
         player_recvd = color(player_recvd, 'yellow' if player_recvd != ctx.name else 'magenta')
-        print('(%s) %s sent %s to %s (%s)' % (ctx.team if ctx.team else 'Team', player_sent, item, player_recvd, location))
+        print('(%s) %s sent %s to %s (%s)' % (ctx.team if ctx.team else 'Team', player_sent, item, player_recvd, get_location_name_from_address(location)))
 
     if cmd == 'Print':
         print(args)
 
-async def server_auth(ctx, password_requested):
+async def server_auth(ctx : Context, password_requested):
     if password_requested and not ctx.password:
         print('Enter the password required to join this game:')
         ctx.password = await console_input(ctx)
@@ -626,11 +668,11 @@ async def server_auth(ctx, password_requested):
         ctx.slot = int(slot) if slot.isdigit() else None
     await send_msgs(ctx.socket, [['Connect', {'password': ctx.password, 'name': ctx.name, 'team': ctx.team, 'slot': ctx.slot}]])
 
-async def console_input(ctx):
+async def console_input(ctx : Context):
     ctx.input_requests += 1
     return await ctx.input_queue.get()
 
-async def console_loop(ctx):
+async def console_loop(ctx : Context):
     while not ctx.exit_event.is_set():
         input = await aioconsole.ainput()
 
@@ -679,28 +721,37 @@ async def console_loop(ctx):
         if command[0] == '/received':
             print('Received items:')
             for index, item in enumerate(ctx.items_received, 1):
-                print('%s from %s (%s) (%d/%d in list)' % (color(item.name, 'red', 'bold'), color(item.player_name, 'yellow'), item.location, index, len(ctx.items_received)))
+                print('%s from %s (%s) (%d/%d in list)' % (
+                    color(get_item_name_from_id(item.item), 'red', 'bold'), color(item.player_name, 'yellow'),
+                    get_location_name_from_address(item.location), index, len(ctx.items_received)))
 
         if command[0] == '/missing':
             for location in location_table.keys():
                 if location not in ctx.locations_checked:
                     print('Missing: ' + location)
-        if command[0] == '/maxkeys':
-            snes_buffered_write(ctx, SAVEDATA_START + 0x364, b'\xFF\xFF\xFF\xFF\xFF\xFF')
-            snes_buffered_write(ctx, SAVEDATA_START + 0x36F, b'\x63')
-            snes_buffered_write(ctx, SAVEDATA_START + 0x37C, b'\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63\x63')
-        if command[0] == '/nokey':
-            snes_buffered_write(ctx, SAVEDATA_START + 0x364, b'\x00\x00\x00\x00\x00\x00')
-            snes_buffered_write(ctx, SAVEDATA_START + 0x36F, b'\x00')
-            snes_buffered_write(ctx, SAVEDATA_START + 0x37C, b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')
         if command[0] == '/getitem' and len(command) > 1:
             item = input[9:]
-            print('Sending item ' + item)
-            await inject_item(ctx, item)
+            item_id = Items.item_table[item][3] if item in Items.item_table else None
+            if type(item_id) is int and item_id in range(0x100):
+                print('Sending item: ' + item)
+                snes_buffered_write(ctx, RECV_ITEM_ADDR, bytes([item_id]))
+            else:
+                print('Invalid item: ' + item)
 
         await snes_flush_writes(ctx)
 
-async def game_watcher(ctx):
+def get_item_name_from_id(code):
+    items = [k for k, i in Items.item_table.items() if type(i[3]) is int and i[3] == code]
+    return items[0] if items else 'Unknown item'
+
+def get_location_name_from_address(address):
+    if type(address) is str:
+        return address
+
+    locs = [k for k, l in Regions.location_table.items() if type(l[0]) is int and l[0] == address]
+    return locs[0] if locs else 'Unknown location'
+
+async def game_watcher(ctx : Context):
     while not ctx.exit_event.is_set():
         await asyncio.sleep(1)
 
@@ -730,231 +781,24 @@ async def game_watcher(ctx):
             if data[offset] & mask != 0 and location not in ctx.locations_checked:
                 ctx.locations_checked.add(location)
                 print("New check: %s (%d/216)" % (location, len(ctx.locations_checked)))
-                await send_msgs(ctx.socket, [['LocationChecks', [location]]])
+                await send_msgs(ctx.socket, [['LocationChecks', [Regions.location_table[location][0]]]])
 
-        data = await snes_read(ctx, RECV_PROGRESS_ADDR, 2)
+        data = await snes_read(ctx, RECV_PROGRESS_ADDR, 3)
         if data is None:
             continue
         recv_index = data[0] + (data[1] * 0x100)
-        if recv_index < len(ctx.items_received):
+        assert(RECV_ITEM_ADDR == RECV_PROGRESS_ADDR + 2)
+        recving = data[2]
+        if recv_index < len(ctx.items_received) and recving == 0:
             item = ctx.items_received[recv_index]
-            if 'winsound' in sys.modules:
-                winsound.PlaySound('itemget.wav', winsound.SND_FILENAME | winsound.SND_ASYNC)
-            print('Received %s from %s (%s) (%d/%d in list)' % (color(item.name, 'red', 'bold'), color(item.player_name, 'yellow'), item.location, recv_index+1, len(ctx.items_received)))
-            await inject_item(ctx, item.name)
+            print('Received %s from %s (%s) (%d/%d in list)' % (
+                color(get_item_name_from_id(item.item), 'red', 'bold'), color(item.player_name, 'yellow'),
+                get_location_name_from_address(item.location), recv_index + 1, len(ctx.items_received)))
             recv_index += 1
             snes_buffered_write(ctx, RECV_PROGRESS_ADDR, bytes([recv_index & 0xFF, (recv_index >> 8) & 0xFF]))
+            snes_buffered_write(ctx, RECV_ITEM_ADDR, bytes([item.item]))
 
         await snes_flush_writes(ctx)
-
-async def inject_item(ctx, name):
-    inv_swap = {'Blue Boomerang': 0x80, 'Red Boomerang': 0x40, 'Mushroom': 0x20, 'Magic Powder': 0x10, 'Shovel': 0x04, 'Ocarina': 0x02}
-    if name in inv_swap:
-        cur = await snes_read(ctx, SAVEDATA_START + 0x38C, 1)
-        if cur is None:
-            return
-        target = cur[0] | inv_swap[name]
-        snes_buffered_write(ctx, SAVEDATA_START + 0x38C, bytes([target]))
-
-        if name in ['Blue Boomerang', 'Red Boomerang']:
-            has_redboom = bool(target & inv_swap['Red Boomerang'])
-            snes_buffered_write(ctx, SAVEDATA_START + 0x341, bytes([2 if has_redboom else 1]))
-
-        if name in ['Mushroom', 'Magic Powder']:
-            has_powder = bool(target & inv_swap['Magic Powder'])
-            snes_buffered_write(ctx, SAVEDATA_START + 0x344, bytes([2 if has_powder else 1]))
-
-        if name in ['Shovel', 'Ocarina']:
-            has_ocarina = bool(target & inv_swap['Ocarina'])
-            ocarina_active =  bool(target & 0x01)
-            snes_buffered_write(ctx, SAVEDATA_START + 0x34C, bytes([3 if ocarina_active else (2 if has_ocarina else 1)]))
-
-        return
-
-    inv_swap2 = {'Bow': 0x80, 'Silver Arrows': 0x40}
-    if name in inv_swap2:
-        cur = await snes_read(ctx, SAVEDATA_START + 0x38E, 1)
-        if cur is None:
-            return
-        target = cur[0] | inv_swap2[name]
-        snes_buffered_write(ctx, SAVEDATA_START + 0x38E, bytes([target]))
-
-        has_bow = bool(target & inv_swap2['Bow'])
-        has_silvers = bool(target & inv_swap2['Silver Arrows'])
-        if has_bow:
-            snes_buffered_write(ctx, SAVEDATA_START + 0x340, bytes([4 if has_silvers else 2]))
-
-        return
-
-    if name in ['Big Key (Eastern Palace)', 'Compass (Eastern Palace)', 'Map (Eastern Palace)',
-                'Big Key (Desert Palace)', 'Compass (Desert Palace)', 'Map (Desert Palace)',
-                'Big Key (Tower of Hera)', 'Compass (Tower of Hera)', 'Map (Tower of Hera)',
-                'Big Key (Escape)', 'Compass (Escape)', 'Map (Escape)',
-                'Big Key (Palace of Darkness)', 'Compass (Palace of Darkness)', 'Map (Palace of Darkness)',
-                'Big Key (Thieves Town)', 'Compass (Thieves Town)', 'Map (Thieves Town)',
-                'Big Key (Skull Woods)', 'Compass (Skull Woods)', 'Map (Skull Woods)',
-                'Big Key (Swamp Palace)', 'Compass (Swamp Palace)', 'Map (Swamp Palace)',
-                'Big Key (Ice Palace)', 'Compass (Ice Palace)', 'Map (Ice Palace)',
-                'Big Key (Misery Mire)', 'Compass (Misery Mire)', 'Map (Misery Mire)',
-                'Big Key (Turtle Rock)', 'Compass (Turtle Rock)', 'Map (Turtle Rock)',
-                'Big Key (Ganons Tower)', 'Compass (Ganons Tower)', 'Map (Ganons Tower)']:
-        address = 0x364
-        if name[:7] == 'Big Key':
-            address = 0x366
-        if name[:3] == 'Map':
-            address = 0x368
-        dungeons = {'(Ganons Tower)': (0, 0x04), '(Turtle Rock)': (0, 0x08), '(Thieves Town)': (0, 0x10), '(Tower of Hera)': (0, 0x20), '(Ice Palace)': (0, 0x40), '(Skull Woods)': (0, 0x80),
-                    '(Misery Mire)': (1, 0x01), '(Palace of Darkness)': (1, 0x02), '(Swamp Palace)': (1, 0x04), '(Desert Palace)': (1, 0x10), '(Eastern Palace)': (1, 0x20), '(Escape)': (1, 0xC0)}
-        for dungeon, (offset, mask) in dungeons.items():
-            if dungeon in name:
-                cur = await snes_read(ctx, SAVEDATA_START + address + offset, 1)
-                if cur is not None:
-                    snes_buffered_write(ctx, SAVEDATA_START + address + offset, bytes([cur[0] | mask]))
-                return
-
-    async def send_key(dungeonoffset, dungeonid):
-        buf1 = await snes_read(ctx, WRAM_START + 0x40C, 1)
-        if buf1 is not None:
-            if buf1[0] == dungeonid:
-                buf2 = await snes_read(ctx, SAVEDATA_START + 0x36F, 1)
-                if buf2 is not None:
-                    snes_buffered_write(ctx, SAVEDATA_START + 0x36F, bytes([buf2[0] + 1]))
-            buf3 = await snes_read(ctx, SAVEDATA_START + dungeonoffset, 1)
-            if buf3 is not None:
-                snes_buffered_write(ctx, SAVEDATA_START + dungeonoffset, bytes([buf3[0] + 1]))
-
-    dungeons_keys = {'Small Key (Eastern Palace)': (0x37E, 0x04), 'Small Key (Desert Palace)': (0x37F, 0x06),
-                     'Small Key (Tower of Hera)': (0x386, 0x14), 'Small Key (Agahnims Tower)': (0x380, 0x08),
-                     'Small Key (Palace of Darkness)': (0x382, 0x0c), 'Small Key (Thieves Town)': (0x387, 0x16),
-                     'Small Key (Skull Woods)': (0x384, 0x10), 'Small Key (Swamp Palace)': (0x381, 0x0a),
-                     'Small Key (Ice Palace)': (0x385, 0x12), 'Small Key (Misery Mire)': (0x383, 0x0e),
-                     'Small Key (Turtle Rock)': (0x388, 0x18), 'Small Key (Ganons Tower)': (0x389, 0x1a)}
-    if name == 'Small Key (Escape)':
-        await send_key(0x37C, 0x00)
-        await send_key(0x37D, 0x02)
-        return
-    if name in dungeons_keys:
-        await send_key(dungeons_keys[name][0], dungeons_keys[name][1])
-        return
-
-    magics = {'Magic Upgrade (1/2)': 1, 'Magic Upgrade (1/4)': 2}
-    if name in magics:
-        cur = await snes_read(ctx, SAVEDATA_START + 0x37B, 1)
-        if cur is None or cur[0] >= magics[name]:
-            return
-        snes_buffered_write(ctx, SAVEDATA_START + 0x37B, bytes([magics[name]]))
-        snes_buffered_write(ctx, SAVEDATA_START + 0x373, bytes([0x80]))
-        return
-
-    rupees = {'Rupee (1)': 1, 'Rupees (5)': 5, 'Rupees (20)': 20, 'Rupees (50)': 50, 'Rupees (100)': 100, 'Rupees (300)': 300}
-    if name in rupees:
-        cur = await snes_read(ctx, SAVEDATA_START + 0x360, 2)
-        if cur is None:
-            return
-        target_rupees = (cur[0] + (cur[1] * 0x100)) + rupees[name]
-        snes_buffered_write(ctx, SAVEDATA_START + 0x360, bytes([target_rupees & 0xFF, (target_rupees >> 8) & 0xFF]))
-        return
-
-    bottles = {'Bottle': 2, 'Bottle (Red Potion)': 3, 'Bottle (Green Potion)': 4, 'Bottle (Blue Potion)': 5, 'Bottle (Fairy)': 6, 'Bottle (Bee)': 7, 'Bottle (Good Bee)': 8}
-    if name in bottles:
-        cur = await snes_read(ctx, SAVEDATA_START + 0x35C, 4)
-        if cur is None:
-            return
-        buf = list(cur)
-        for i in range(4):
-            if buf[i] == 0:
-                buf[i] = bottles[name]
-                break
-        snes_buffered_write(ctx, SAVEDATA_START + 0x35C, bytes(buf))
-        return
-
-    simple_items = {'Hookshot': (0x342, 0x01), 'Fire Rod': (0x345, 0x01), 'Ice Rod': (0x346, 0x01),
-                    'Bombos': (0x347, 0x01), 'Ether': (0x348, 0x01), 'Quake': (0x349, 0x01),
-                    'Lamp': (0x34A, 0x01), 'Hammer': (0x34B, 0x01), 'Bug Catching Net': (0x34D, 0x01), 'Book of Mudora': (0x34E, 0x01),
-                    'Cane of Somaria': (0x350, 0x01), 'Cane of Byrna': (0x351, 0x01),'Cape': (0x352, 0x01),
-                    'Magic Mirror': (0x353, 0x02), 'Flippers': (0x356, 0x01), 'Moon Pearl': (0x357, 0x01),
-                    'Single Arrow': (0x376, 0x01), 'Arrows (10)': (0x376, 0x0A),
-                    'Single Bomb': (0x375, 0x01), 'Bombs (3)': (0x375, 0x03), 'Bombs (10)': (0x375, 0x0A)}
-    if name in simple_items:
-        snes_buffered_write(ctx, SAVEDATA_START + simple_items[name][0], bytes([simple_items[name][1]]))
-        return
-
-    if name == 'Pegasus Boots':
-        cur = await snes_read(ctx, SAVEDATA_START + 0x379, 1)
-        if cur is None:
-            return
-        dash_flag = cur[0] | 0x04
-        snes_buffered_write(ctx, SAVEDATA_START + 0x379, bytes([dash_flag]))
-        snes_buffered_write(ctx, SAVEDATA_START + 0x355, bytes([0x01]))
-        return
-
-    if name == 'Progressive Glove':
-        cur = await snes_read(ctx, SAVEDATA_START + 0x354, 1)
-        if cur is None:
-            return
-        gloves = cur[0] + 1
-        if gloves <= 2:
-            snes_buffered_write(ctx, SAVEDATA_START + 0x354, bytes([gloves]))
-        return
-
-    if name == 'Progressive Sword':
-        cur = await snes_read(ctx, SAVEDATA_START + 0x359, 1)
-        if cur is None:
-            return
-        swords = cur[0] + 1
-        if swords <= 4:
-            snes_buffered_write(ctx, SAVEDATA_START + 0x359, bytes([swords]))
-        return
-
-    if name == 'Progressive Shield':
-        cur = await snes_read(ctx, SAVEDATA_START + 0x416, 1)
-        if cur is None:
-            return
-        shields = (cur[0] >> 6) + 1
-        if shields <= 3:
-            snes_buffered_write(ctx, SAVEDATA_START + 0x416, bytes([shields << 6]))
-            snes_buffered_write(ctx, SAVEDATA_START + 0x35A, bytes([shields]))
-        return
-
-    if name == 'Progressive Armor':
-        cur = await snes_read(ctx, SAVEDATA_START + 0x35B, 1)
-        if cur is None:
-            return
-        armors = cur[0] + 1
-        if armors <= 2:
-            snes_buffered_write(ctx, SAVEDATA_START + 0x35B, bytes([armors]))
-        return
-
-    async def increase_hearts(refill): # 8 is one heart refill, 1 is full
-        hearts_current = await snes_read(ctx, SAVEDATA_START + 0x36C, 1)
-        if hearts_current is None:
-            return
-        hearts = min(hearts_current[0] + 8, 20 * 8)
-        if hearts != hearts_current[0]:
-            snes_buffered_write(ctx, SAVEDATA_START + 0x36C, bytes([hearts]))
-        if refill:
-            snes_buffered_write(ctx, SAVEDATA_START + 0x372, bytes([refill]))
-
-    if name == 'Boss Heart Container':
-        await increase_hearts(0x08)
-        return
-
-    if name == 'Sanctuary Heart Container':
-        await increase_hearts(0x01)
-        return
-
-    if name == 'Piece of Heart':
-        cur = await snes_read(ctx, SAVEDATA_START + 0x36B, 1)
-        if cur is None:
-            return
-        pieces = cur[0] + 1
-        if pieces >= 4:
-            pieces = 0
-            await increase_hearts(0x01)
-        snes_buffered_write(ctx, SAVEDATA_START + 0x36B, bytes([pieces]))
-        return
-
-    print('Unknown item: ' + name)
 
 async def main():
     parser = argparse.ArgumentParser()
@@ -996,45 +840,6 @@ async def main():
         ctx.input_requests -= 1
 
     await input_task
-
-
-class ReceivedItem:
-    def __init__(self, name, location, player_id, player_name):
-        self.name = name
-        self.location = location
-        self.player_id = player_id
-        self.player_name = player_name
-
-class Context:
-    def __init__(self, snes_address, server_address, password, name, team, slot):
-        self.snes_address = snes_address
-        self.server_address = server_address
-
-        self.exit_event = asyncio.Event()
-
-        self.input_queue = asyncio.Queue()
-        self.input_requests = 0
-
-        self.snes_socket = None
-        self.snes_state = SNES_DISCONNECTED
-        self.snes_recv_queue = asyncio.Queue()
-        self.snes_request_lock = asyncio.Lock()
-        self.is_sd2snes = False
-        self.snes_write_buffer = []
-
-        self.server_task = None
-        self.socket = None
-        self.password = password
-
-        self.name = name
-        self.team = team
-        self.slot = slot
-
-        self.locations_checked = set()
-        self.items_received = []
-        self.last_rom = None
-        self.expected_rom = None
-        self.rom_confirmed = False
 
 if __name__ == '__main__':
     if 'colorama' in sys.modules:

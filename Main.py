@@ -3,6 +3,7 @@ import copy
 from itertools import zip_longest
 import json
 import logging
+import pickle
 import random
 import time
 
@@ -122,26 +123,29 @@ def main(args, seed=None):
 
     jsonout = {}
     if not args.suppress_rom:
-        rom_names = {}
+        from MultiServer import MultiWorld
+        multidata = MultiWorld()
+        multidata.players = world.players
+
         for player in range(1, world.players + 1):
             if args.jsonout:
                 rom = JsonRom()
             else:
                 rom = LocalRom(args.rom)
             patch_rom(world, player, rom, bytearray(logic_hash), args.heartbeep, args.heartcolor, sprite)
-            rom_names[player] = list(rom.name)
+
+            multidata.rom_names[player] = list(rom.name)
+            for location in world.get_filled_locations(player):
+                if type(location.address) is int:
+                    multidata.locations[(location.address, player)] = (location.item.code, location.item.player)
+
             if args.jsonout:
                 jsonout['patch%d' % player] = rom.patches
             else:
                 rom.write_to_file(output_path('%s_P%d.sfc' % (outfilebase, player)))
 
-        with open(output_path('%s_multidata' % outfilebase), 'w') as f:
-            out = {"players": world.players, "rom_names": {}}
-            for player in range(1, world.players + 1):
-                out['rom_names'][player] = rom_names[player]
-                out[player] = {location.address: (location.item.code, location.item.player) for location in
-                               world.get_filled_locations(player) if type(location.address) is int}
-            f.write(json.dumps(out))
+        with open(output_path('%s_multidata' % outfilebase), 'wb') as f:
+            pickle.dump(multidata, f, pickle.HIGHEST_PROTOCOL)
 
     if args.create_spoiler and not args.jsonout:
         world.spoiler.to_file(output_path('%s_Spoiler.txt' % outfilebase))
