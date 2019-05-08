@@ -294,6 +294,7 @@ def guiMain(args=None):
         guiargs.rom = romVar.get()
         guiargs.jsonout = None
         guiargs.sprite = sprite
+        guiargs.skip_playthrough = False
         try:
             if guiargs.count is not None:
                 seed = guiargs.seed
