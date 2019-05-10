@@ -184,6 +184,7 @@ def fill_restrictive(world, base_state, locations, itempool):
         if world.check_beatable_only:
             perform_access_check = not world.has_beaten_game(maximum_exploration_state)
 
+        filled_locations = []
         for item_to_place in items_to_place:
             spot_to_fill = None
             for location in locations:
@@ -202,6 +203,11 @@ def fill_restrictive(world, base_state, locations, itempool):
             world.push_item(spot_to_fill, item_to_place, False)
             locations.remove(spot_to_fill)
             spot_to_fill.event = True
+
+            spot_to_fill.location_dependencies = filled_locations.copy()
+            for location in filled_locations:
+                location.location_dependencies.append(spot_to_fill)
+            filled_locations.append(spot_to_fill)
 
 
 def distribute_items_restrictive(world, gftower_trash_count=0, fill_locations=None):
