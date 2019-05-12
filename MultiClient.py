@@ -71,6 +71,8 @@ class Context:
         self.last_rom = None
         self.expected_rom = None
         self.rom_confirmed = False
+        self.hud_character_data = [None] * 128
+        self.hud_message_queue = []
 
 def color_code(*args):
     codes = {'reset': 0, 'bold': 1, 'underline': 4, 'black': 30, 'red': 31, 'green': 32, 'yellow': 33, 'blue': 34,
@@ -90,14 +92,16 @@ SRAM_START = 0xE00000
 ROMNAME_START = SRAM_START + 0x2000
 ROMNAME_SIZE = 0x15
 
-INGAME_MODES = {0x07, 0x09}
+INGAME_MODES = {0x07, 0x09, 0x0b}
 
 SAVEDATA_START = WRAM_START + 0xF000
 SAVEDATA_SIZE = 0x500
 
-RECV_PROGRESS_ADDR = SAVEDATA_START + 0x4D0 # 2 bytes
-RECV_ITEM_ADDR = SAVEDATA_START + 0x4D2     # 1 byte
-
+RECV_PROGRESS_ADDR = SAVEDATA_START + 0x4D0     # 2 bytes
+RECV_ITEM_ADDR = SAVEDATA_START + 0x4D2         # 1 byte
+HUD_TEXT_TIMER_ADDR = SAVEDATA_START + 0x4D3    # 1 byte
+HUD_CHARACTER_DATA = WRAM_START + 0xC058        # 128 bytes
+HUD_MESSAGE_TIME = 60
 
 location_table = {'Mushroom': (0x411, 0x10),
                   'Bottle Merchant': (0x3C9, 0x02),
@@ -418,6 +422,8 @@ async def snes_recv_loop(ctx : Context):
 
         ctx.snes_state = SNES_DISCONNECTED
         ctx.snes_recv_queue = asyncio.Queue()
+        ctx.hud_character_data = [None] * 128
+        ctx.hud_message_queue = []
 
 async def snes_read(ctx : Context, address, size):
     try:
@@ -475,7 +481,6 @@ async def snes_write(ctx : Context, write_list):
                     print("SD2SNES: Write out of range %s (%d)" % (hex(address), len(data)))
                     return False
                 for ptr, byte in enumerate(data, address + 0x7E0000 - WRAM_START):
-                    #todo: can this be optimized ?
                     cmd += b'\xA9' # LDA
                     cmd += bytes([byte])
                     cmd += b'\x8F' # STA.l
@@ -527,10 +532,6 @@ async def send_msgs(websocket, msgs):
     except websockets.ConnectionClosed:
         pass
 
-def rom_confirmed(ctx : Context):
-    ctx.rom_confirmed = True
-    print('ROM hash Confirmed')
-
 async def server_loop(ctx : Context):
     if ctx.socket is not None:
         print('Already connected')
@@ -559,6 +560,8 @@ async def server_loop(ctx : Context):
         print('Disconnected from multiworld server, type /connect to reconnect')
     except ConnectionRefusedError:
         print('Connection refused by the multiworld server')
+    except OSError:
+        print('Failed to connect to the multiworld server')
     except Exception as e:
         print('Lost connection to the multiworld server, type /connect to reconnect')
         if type(e) is not websockets.ConnectionClosed:
@@ -643,6 +646,8 @@ async def process_server_cmd(ctx : Context, cmd, args):
 
     if cmd == 'ItemSent':
         player_sent, player_recvd, item, location = args
+        if player_sent == ctx.name:
+            ctx.hud_message_queue.append('%s to %s' % (get_item_name_from_id(item), player_recvd))
         item = color(get_item_name_from_id(item), 'cyan' if player_sent != ctx.name else 'green')
         player_sent = color(player_sent, 'yellow' if player_sent != ctx.name else 'magenta')
         player_recvd = color(player_recvd, 'yellow' if player_recvd != ctx.name else 'magenta')
@@ -738,7 +743,43 @@ async def console_loop(ctx : Context):
             else:
                 print('Invalid item: ' + item)
 
+        if command[0] == '/testprint':
+            text = '0123456789_ abcdefghijklmnopqrst' + ' ' + 'abcdefghijklmnopqrstuvwxyz012345'
+            ctx.hud_message_queue.append(text)
+
         await snes_flush_writes(ctx)
+
+def rom_confirmed(ctx : Context):
+    ctx.rom_confirmed = True
+    print('ROM hash Confirmed')
+
+def hud_format_text(text):
+    text = text.lower().replace('(','').replace(')','').replace('+','')
+    output = bytes()
+    pos = 0
+    words = text.split()
+    for word in words:
+        if pos < 32 and len(word) <= 32 < (len(word) + pos):
+            output += b'\x7f\x00' * (32 - pos)
+            pos = 32
+
+        for char in word:
+            if 'a' <= char <= 'z':
+                output += bytes([0x5d + ord(char) - ord('a'), 0x29])
+            elif '0' <= char <= '8':
+                output += bytes([0x77 + ord(char) - ord('0'), 0x29])
+            elif char == '9':
+                output += b'\x4b\x29'
+            else:
+                output += b'\x2a\x29'
+            pos += 1
+
+        if pos != 32:
+            output += b'\x7f\x00'
+            pos += 1
+    while len(output) < 128:
+        output += b'\x7f\x00'
+    return output[:128]
 
 def get_item_name_from_id(code):
     items = [k for k, i in Items.item_table.items() if type(i[3]) is int and i[3] == code]
@@ -774,16 +815,21 @@ async def game_watcher(ctx : Context):
         if gamemode is None or gamemode[0] not in INGAME_MODES:
             continue
 
-        data = await snes_read(ctx, SAVEDATA_START, 0x412)
+        sram = await snes_read(ctx, SAVEDATA_START, 0x200)
+        if sram is None:
+            continue
+        data = await snes_read(ctx, SAVEDATA_START + 0x200, 0x212)
         if data is None:
             continue
+        sram += data
+
         for location, (offset, mask) in location_table.items():
-            if data[offset] & mask != 0 and location not in ctx.locations_checked:
+            if sram[offset] & mask != 0 and location not in ctx.locations_checked:
                 ctx.locations_checked.add(location)
                 print("New check: %s (%d/216)" % (location, len(ctx.locations_checked)))
                 await send_msgs(ctx.socket, [['LocationChecks', [Regions.location_table[location][0]]]])
 
-        data = await snes_read(ctx, RECV_PROGRESS_ADDR, 3)
+        data = await snes_read(ctx, RECV_PROGRESS_ADDR, 4)
         if data is None:
             continue
         recv_index = data[0] + (data[1] * 0x100)
@@ -794,9 +840,20 @@ async def game_watcher(ctx : Context):
             print('Received %s from %s (%s) (%d/%d in list)' % (
                 color(get_item_name_from_id(item.item), 'red', 'bold'), color(item.player_name, 'yellow'),
                 get_location_name_from_address(item.location), recv_index + 1, len(ctx.items_received)))
+            ctx.hud_message_queue.append('%s from %s' % (get_item_name_from_id(item.item), item.player_name))
             recv_index += 1
             snes_buffered_write(ctx, RECV_PROGRESS_ADDR, bytes([recv_index & 0xFF, (recv_index >> 8) & 0xFF]))
             snes_buffered_write(ctx, RECV_ITEM_ADDR, bytes([item.item]))
+
+        assert(HUD_TEXT_TIMER_ADDR == RECV_PROGRESS_ADDR + 3)
+        timer = data[3]
+        if timer == 0 and len(ctx.hud_message_queue) > 0:
+            output = hud_format_text(ctx.hud_message_queue.pop(0))
+            for i, value in enumerate(output):
+                if value != ctx.hud_character_data[i]:
+                    ctx.hud_character_data[i] = value
+                    snes_buffered_write(ctx, HUD_CHARACTER_DATA + i, bytes([value]))
+            snes_buffered_write(ctx, HUD_TEXT_TIMER_ADDR, bytes([HUD_MESSAGE_TIME]))
 
         await snes_flush_writes(ctx)
 

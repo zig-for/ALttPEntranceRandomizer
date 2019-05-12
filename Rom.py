@@ -16,7 +16,7 @@ from Items import ItemFactory
 
 
 JAP10HASH = '03a63945398191337e896e5771f77173'
-RANDOMIZERBASEHASH = '12b4ba598cd6a1e2c62a4d253a05bf85'
+RANDOMIZERBASEHASH = 'af36f5324f5848ade6dca4fb7b5b91c6'
 
 
 class JsonRom(object):
@@ -1058,7 +1058,7 @@ def write_strings(rom, world, player):
         random.shuffle(hint_locations)
         all_entrances = [entrance for entrance in world.get_entrances() if entrance.player == player]
         random.shuffle(all_entrances)
-        hint_count = 4 if world.shuffle is not 'vanilla' else 0
+        hint_count = 4 if world.shuffle != 'vanilla' else 0
         for entrance in all_entrances:
             if entrance.name in entrances_to_hint:
                 this_hint = entrances_to_hint[entrance.name] + ' leads to ' + hint_text(entrance.connected_region) + '.'
@@ -1073,7 +1073,7 @@ def write_strings(rom, world, player):
             entrances_to_hint.update(InsanityEntrances)
             if world.shuffle_ganon:
                 entrances_to_hint.update({'Pyramid Ledge': 'The pyramid ledge'})
-        hint_count = 4 if world.shuffle is not 'vanilla' else 0
+        hint_count = 4 if world.shuffle != 'vanilla' else 0
         for entrance in all_entrances:
             if entrance.name in entrances_to_hint:
                 this_hint = entrances_to_hint[entrance.name] + ' leads to ' + hint_text(entrance.connected_region) + '.'
@@ -1086,7 +1086,7 @@ def write_strings(rom, world, player):
         # Next we write a few hints for specific inconvenient locations. We don't make many because in entrance this is highly unpredictable.
         locations_to_hint = InconvenientLocations.copy()
         random.shuffle(locations_to_hint)
-        hint_count = 3 if world.shuffle is not 'vanilla' else 4
+        hint_count = 3 if world.shuffle != 'vanilla' else 4
         del locations_to_hint[hint_count:]   
         for location in locations_to_hint:
             if location == 'Swamp Left':
@@ -1131,7 +1131,7 @@ def write_strings(rom, world, player):
         if world.keysanity:
             items_to_hint.extend(KeysanityItems)
         random.shuffle(items_to_hint)
-        hint_count = 5 if world.shuffle is not 'vanilla' else 7
+        hint_count = 5 if world.shuffle != 'vanilla' else 7
         while(hint_count > 0):
             this_item = items_to_hint.pop(0)
             this_location = world.find_items(this_item, player)
