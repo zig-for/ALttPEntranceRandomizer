@@ -382,7 +382,7 @@ async def snes_connect(ctx : Context, address = None):
         await ctx.snes_socket.send(json.dumps(Attach_Request))
         ctx.snes_state = SNES_ATTACHED
 
-        if 'SD2SNES'.lower() in device.lower():
+        if 'SD2SNES'.lower() in device.lower() or (len(device) == 4 and device[:3] == 'COM'):
             print("SD2SNES Detected")
             ctx.is_sd2snes = True
             await ctx.snes_socket.send(json.dumps({"Opcode" : "Info", "Space" : "SNES"}))
