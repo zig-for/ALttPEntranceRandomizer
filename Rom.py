@@ -12,11 +12,11 @@ from Text import MultiByteTextMapper, text_addresses, Credits, TextTable
 from Text import Uncle_texts, Ganon1_texts, TavernMan_texts, Sahasrahla2_texts, Triforce_texts, Blind_texts, BombShop2_texts, junk_texts
 from Text import KingsReturn_texts, Sanctuary_texts, Kakariko_texts, Blacksmiths_texts, DeathMountain_texts, LostWoods_texts, WishingWell_texts, DesertPalace_texts, MountainTower_texts, LinksHouse_texts, Lumberjacks_texts, SickKid_texts, FluteBoy_texts, Zora_texts, MagicShop_texts, Sahasrahla_names
 from Utils import local_path, int16_as_bytes, int32_as_bytes
-from Items import ItemFactory
+from Items import ItemFactory, item_table
 
 
 JAP10HASH = '03a63945398191337e896e5771f77173'
-RANDOMIZERBASEHASH = 'af36f5324f5848ade6dca4fb7b5b91c6'
+RANDOMIZERBASEHASH = '4d8556bed8a691cb195cd6bdd34db8b7'
 
 
 class JsonRom(object):
@@ -282,17 +282,11 @@ def patch_rom(world, player, rom, hashtable, beep='normal', color='red', sprite=
         if location.player != player:
             continue
 
-        itemid = 0x5A
-        if location.item is not None and location.item.player != player:
-            # TODO: need some magic in here
-            itemid = 0x5b + ((location.item.player - (1 if location.item.player > player else 0)) % 3)
-        elif location.item is not None:
-            itemid = location.item.code
+        itemid = location.item.code if location.item is not None else 0x5A
 
-        if itemid is None or location.address is None:
+        if location.address is None:
             continue
 
-        locationaddress = location.address
         if not location.crystal:
             # Keys in their native dungeon should use the orignal item code for keys
             if location.parent_region.dungeon:
@@ -302,10 +296,15 @@ def patch_rom(world, player, rom, hashtable, beep='normal', color='red', sprite=
                         itemid = 0x32
                     if location.item.type == "SmallKey":
                         itemid = 0x24
-            rom.write_byte(locationaddress, itemid)
+            if location.item and location.item.player != player:
+                if location.player_address is not None:
+                    rom.write_byte(location.player_address, location.item.player)
+                else:
+                    itemid = 0x5A
+            rom.write_byte(location.address, itemid)
         else:
             # crystals
-            for address, value in zip(locationaddress, itemid):
+            for address, value in zip(location.address, itemid):
                 rom.write_byte(address, value)
 
             # patch music
@@ -521,11 +520,28 @@ def patch_rom(world, player, rom, hashtable, beep='normal', color='red', sprite=
 
     difficulty = world.difficulty_requirements
     #Set overflow items for progressive equipment
+    mw_sword_replacements = {0: overflow_replacement,
+                             1: item_table['Fighter Sword'][3],
+                             2: item_table['Master Sword'][3],
+                             3: item_table['Tempered Sword'][3],
+                             4: item_table['Golden Sword'][3]}
+    mw_shield_replacements = {0: overflow_replacement,
+                              1: item_table['Blue Shield'][3],
+                              2: item_table['Red Shield'][3],
+                              3: item_table['Mirror Shield'][3]}
+    mw_armor_replacements = {0: overflow_replacement,
+                             1: item_table['Blue Mail'][3],
+                             2: item_table['Red Mail'][3]}
+    mw_bottle_replacements = {0: overflow_replacement,
+                              1: item_table['Blue Potion'][3],
+                              2: item_table['Blue Potion'][3],
+                              3: item_table['Blue Potion'][3],
+                              4: item_table['Blue Potion'][3]}
     rom.write_bytes(0x180090,
-                    [difficulty.progressive_sword_limit, overflow_replacement,
-                     difficulty.progressive_shield_limit, overflow_replacement,
-                     difficulty.progressive_armor_limit, overflow_replacement,
-                     difficulty.progressive_bottle_limit, overflow_replacement])
+                    [difficulty.progressive_sword_limit, mw_sword_replacements[difficulty.progressive_sword_limit] if world.players > 1 else overflow_replacement,
+                     difficulty.progressive_shield_limit, mw_shield_replacements[difficulty.progressive_shield_limit] if world.players > 1 else overflow_replacement,
+                     difficulty.progressive_armor_limit, mw_armor_replacements[difficulty.progressive_armor_limit] if world.players > 1 else overflow_replacement,
+                     difficulty.progressive_bottle_limit, mw_bottle_replacements[difficulty.progressive_bottle_limit] if world.players > 1 else overflow_replacement])
 
     # set up game internal RNG seed
     for i in range(1024):
@@ -1061,11 +1077,12 @@ def write_strings(rom, world, player):
         hint_count = 4 if world.shuffle != 'vanilla' else 0
         for entrance in all_entrances:
             if entrance.name in entrances_to_hint:
-                this_hint = entrances_to_hint[entrance.name] + ' leads to ' + hint_text(entrance.connected_region) + '.'
-                tt[hint_locations.pop(0)] = this_hint
-                entrances_to_hint.pop(entrance.name)
-                hint_count -= 1
-                if hint_count < 1:
+                if hint_count > 0:
+                    this_hint = entrances_to_hint[entrance.name] + ' leads to ' + hint_text(entrance.connected_region) + '.'
+                    tt[hint_locations.pop(0)] = this_hint
+                    entrances_to_hint.pop(entrance.name)
+                    hint_count -= 1
+                else:
                     break
 
         entrances_to_hint.update(OtherEntrances)
@@ -1076,18 +1093,19 @@ def write_strings(rom, world, player):
         hint_count = 4 if world.shuffle != 'vanilla' else 0
         for entrance in all_entrances:
             if entrance.name in entrances_to_hint:
-                this_hint = entrances_to_hint[entrance.name] + ' leads to ' + hint_text(entrance.connected_region) + '.'
-                tt[hint_locations.pop(0)] = this_hint
-                entrances_to_hint.pop(entrance.name)
-                hint_count -= 1
-                if hint_count < 1:
+                if hint_count > 0:
+                    this_hint = entrances_to_hint[entrance.name] + ' leads to ' + hint_text(entrance.connected_region) + '.'
+                    tt[hint_locations.pop(0)] = this_hint
+                    entrances_to_hint.pop(entrance.name)
+                    hint_count -= 1
+                else:
                     break
 
         # Next we write a few hints for specific inconvenient locations. We don't make many because in entrance this is highly unpredictable.
         locations_to_hint = InconvenientLocations.copy()
         random.shuffle(locations_to_hint)
         hint_count = 3 if world.shuffle != 'vanilla' else 4
-        del locations_to_hint[hint_count:]   
+        del locations_to_hint[hint_count:]
         for location in locations_to_hint:
             if location == 'Swamp Left':
                 if random.randint(0, 1) == 0:
@@ -1132,7 +1150,7 @@ def write_strings(rom, world, player):
             items_to_hint.extend(KeysanityItems)
         random.shuffle(items_to_hint)
         hint_count = 5 if world.shuffle != 'vanilla' else 7
-        while(hint_count > 0):
+        while hint_count > 0:
             this_item = items_to_hint.pop(0)
             this_location = world.find_items(this_item, player)
             random.shuffle(this_location)
@@ -1140,8 +1158,6 @@ def write_strings(rom, world, player):
                 this_hint = this_location[0].item.hint_text + ' can be found ' + hint_text(this_location[0]) + '.'
                 tt[hint_locations.pop(0)] = this_hint
                 hint_count -= 1
-            else:
-                continue
 
         # All remaining hint slots are filled with junk hints. It is done this way to ensure the same junk hint isn't selected twice.
         junk_hints = junk_texts.copy()

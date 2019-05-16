@@ -250,7 +250,7 @@ def copy_dynamic_regions_and_locations(world, ret):
             ret.shops.append(new_reg.shop)
 
     for location in world.dynamic_locations:
-        new_loc = Location(location.player, location.name, location.address, location.crystal, location.hint_text, location.parent_region)
+        new_loc = Location(location.player, location.name, location.address, location.crystal, location.hint_text, location.parent_region, location.player_address)
         new_reg = ret.get_region(location.parent_region.name, location.parent_region.player)
         new_reg.locations.append(new_loc)
 

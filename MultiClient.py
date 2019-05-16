@@ -71,7 +71,6 @@ class Context:
         self.last_rom = None
         self.expected_rom = None
         self.rom_confirmed = False
-        self.hud_character_data = [None] * 128
         self.hud_message_queue = []
 
 def color_code(*args):
@@ -103,223 +102,222 @@ HUD_TEXT_TIMER_ADDR = SAVEDATA_START + 0x4D3    # 1 byte
 HUD_CHARACTER_DATA = WRAM_START + 0xC058        # 128 bytes
 HUD_MESSAGE_TIME = 60
 
-location_table = {'Mushroom': (0x411, 0x10),
-                  'Bottle Merchant': (0x3C9, 0x02),
-                  'Flute Spot': (0x2AA, 0x40),
-                  'Sunken Treasure': (0x2BB, 0x40),
-                  'Purple Chest': (0x3C9, 0x10),
-                  'Blind\'s Hideout - Top': (0x23A, 0x10),
-                  'Blind\'s Hideout - Left': (0x23A, 0x20),
-                  'Blind\'s Hideout - Right': (0x23A, 0x40),
-                  'Blind\'s Hideout - Far Left': (0x23A, 0x80),
-                  'Blind\'s Hideout - Far Right': (0x23B, 0x01),
-                  'Link\'s Uncle': (0x3C6, 0x01),
-                  'Secret Passage': (0x0AA, 0x10),
-                  'King Zora': (0x410, 0x02),
-                  'Zora\'s Ledge': (0x301, 0x40),
-                  'Waterfall Fairy - Left': (0x228, 0x10),
-                  'Waterfall Fairy - Right': (0x228, 0x20),
-                  'King\'s Tomb': (0x226, 0x10),
-                  'Floodgate Chest': (0x216, 0x10),
-                  'Link\'s House': (0x208, 0x10),
-                  'Kakariko Tavern': (0x206, 0x10),
-                  'Chicken House': (0x210, 0x10),
-                  'Aginah\'s Cave': (0x214, 0x10),
-                  'Sahasrahla\'s Hut - Left': (0x20A, 0x10),
-                  'Sahasrahla\'s Hut - Middle': (0x20A, 0x20),
-                  'Sahasrahla\'s Hut - Right': (0x20A, 0x40),
-                  'Sahasrahla': (0x410, 0x10),
-                  'Kakariko Well - Top': (0x05E, 0x10),
-                  'Kakariko Well - Left': (0x05E, 0x20),
-                  'Kakariko Well - Middle': (0x05E, 0x40),
-                  'Kakariko Well - Right': (0x05E, 0x80),
-                  'Kakariko Well - Bottom': (0x05F, 0x01),
-                  'Blacksmith': (0x411, 0x04),
-                  'Magic Bat': (0x411, 0x80),
-                  'Sick Kid': (0x410, 0x04),
-                  'Hobo': (0x3C9, 0x01),
-                  'Lost Woods Hideout': (0x1C3, 0x02),
-                  'Lumberjack Tree': (0x1C5, 0x02),
-                  'Cave 45': (0x237, 0x04),
-                  'Graveyard Cave': (0x237, 0x02),
-                  'Checkerboard Cave': (0x24D, 0x02),
-                  'Mini Moldorm Cave - Far Left': (0x246, 0x10),
-                  'Mini Moldorm Cave - Left': (0x246, 0x20),
-                  'Mini Moldorm Cave - Right': (0x246, 0x40),
-                  'Mini Moldorm Cave - Far Right': (0x246, 0x80),
-                  'Mini Moldorm Cave - Generous Guy': (0x247, 0x04),
-                  'Ice Rod Cave': (0x240, 0x10),
-                  'Bonk Rock Cave': (0x248, 0x10),
-                  'Library': (0x410, 0x80),
-                  'Potion Shop': (0x411, 0x20),
-                  'Lake Hylia Island': (0x2B5, 0x40),
-                  'Maze Race': (0x2A8, 0x40),
-                  'Desert Ledge': (0x2B0, 0x40),
-                  'Desert Palace - Big Chest': (0x0E6, 0x10),
-                  'Desert Palace - Torch': (0x0E7, 0x04),
-                  'Desert Palace - Map Chest': (0x0E8, 0x10),
-                  'Desert Palace - Compass Chest': (0x10A, 0x10),
-                  'Desert Palace - Big Key Chest': (0x0EA, 0x10),
-                  'Desert Palace - Boss': (0x067, 0x08),
-                  'Eastern Palace - Compass Chest': (0x150, 0x10),
-                  'Eastern Palace - Big Chest': (0x152, 0x10),
-                  'Eastern Palace - Cannonball Chest': (0x172, 0x10),
-                  'Eastern Palace - Big Key Chest': (0x170, 0x10),
-                  'Eastern Palace - Map Chest': (0x154, 0x10),
-                  'Eastern Palace - Boss': (0x191, 0x08),
-                  'Master Sword Pedestal': (0x300, 0x40),
-                  'Hyrule Castle - Boomerang Chest': (0x0E2, 0x10),
-                  'Hyrule Castle - Map Chest': (0x0E4, 0x10),
-                  'Hyrule Castle - Zelda\'s Chest': (0x100, 0x10),
-                  'Sewers - Dark Cross': (0x064, 0x10),
-                  'Sewers - Secret Room - Left': (0x022, 0x10),
-                  'Sewers - Secret Room - Middle': (0x022, 0x20),
-                  'Sewers - Secret Room - Right': (0x022, 0x40),
-                  'Sanctuary': (0x024, 0x10),
-                  'Castle Tower - Room 03': (0x1C0, 0x10),
-                  'Castle Tower - Dark Maze': (0x1A0, 0x10),
-                  'Old Man': (0x410, 0x01),
-                  'Spectacle Rock Cave': (0x1D5, 0x04),
-                  'Paradox Cave Lower - Far Left': (0x1DE, 0x10),
-                  'Paradox Cave Lower - Left': (0x1DE, 0x20),
-                  'Paradox Cave Lower - Right': (0x1DE, 0x40),
-                  'Paradox Cave Lower - Far Right': (0x1DE, 0x80),
-                  'Paradox Cave Lower - Middle': (0x1DF, 0x01),
-                  'Paradox Cave Upper - Left': (0x1FE, 0x10),
-                  'Paradox Cave Upper - Right': (0x1FE, 0x20),
-                  'Spiral Cave': (0x1FC, 0x10),
-                  'Ether Tablet': (0x411, 0x01),
-                  'Spectacle Rock': (0x283, 0x40),
-                  'Tower of Hera - Basement Cage': (0x10F, 0x04),
-                  'Tower of Hera - Map Chest': (0x0EE, 0x10),
-                  'Tower of Hera - Big Key Chest': (0x10E, 0x10),
-                  'Tower of Hera - Compass Chest': (0x04E, 0x20),
-                  'Tower of Hera - Big Chest': (0x04E, 0x10),
-                  'Tower of Hera - Boss': (0x00F, 0x08),
-                  'Pyramid': (0x2DB, 0x40),
-                  'Catfish': (0x410, 0x20),
-                  'Stumpy': (0x410, 0x08),
-                  'Digging Game': (0x2E8, 0x40),
-                  'Bombos Tablet': (0x411, 0x02),
-                  'Hype Cave - Top': (0x23C, 0x10),
-                  'Hype Cave - Middle Right': (0x23C, 0x20),
-                  'Hype Cave - Middle Left': (0x23C, 0x40),
-                  'Hype Cave - Bottom': (0x23C, 0x80),
-                  'Hype Cave - Generous Guy': (0x23D, 0x04),
-                  'Peg Cave': (0x24F, 0x04),
-                  'Pyramid Fairy - Left': (0x22C, 0x10),
-                  'Pyramid Fairy - Right': (0x22C, 0x20),
-                  'Brewery': (0x20C, 0x10),
-                  'C-Shaped House': (0x238, 0x10),
-                  'Chest Game': (0x20D, 0x04),
-                  'Bumper Cave Ledge': (0x2CA, 0x40),
-                  'Mire Shed - Left': (0x21A, 0x10),
-                  'Mire Shed - Right': (0x21A, 0x20),
-                  'Superbunny Cave - Top': (0x1F0, 0x10),
-                  'Superbunny Cave - Bottom': (0x1F0, 0x20),
-                  'Spike Cave': (0x22E, 0x10),
-                  'Hookshot Cave - Top Right': (0x078, 0x10),
-                  'Hookshot Cave - Top Left': (0x078, 0x20),
-                  'Hookshot Cave - Bottom Right': (0x078, 0x80),
-                  'Hookshot Cave - Bottom Left': (0x078, 0x40),
-                  'Floating Island': (0x285, 0x40),
-                  'Mimic Cave': (0x218, 0x10),
-                  'Swamp Palace - Entrance': (0x050, 0x10),
-                  'Swamp Palace - Map Chest': (0x06E, 0x10),
-                  'Swamp Palace - Big Chest': (0x06C, 0x10),
-                  'Swamp Palace - Compass Chest': (0x08C, 0x10),
-                  'Swamp Palace - Big Key Chest': (0x06A, 0x10),
-                  'Swamp Palace - West Chest': (0x068, 0x10),
-                  'Swamp Palace - Flooded Room - Left': (0x0EC, 0x10),
-                  'Swamp Palace - Flooded Room - Right': (0x0EC, 0x20),
-                  'Swamp Palace - Waterfall Room': (0x0CC, 0x10),
-                  'Swamp Palace - Boss': (0x00D, 0x08),
-                  'Thieves\' Town - Big Key Chest': (0x1B6, 0x20),
-                  'Thieves\' Town - Map Chest': (0x1B6, 0x10),
-                  'Thieves\' Town - Compass Chest': (0x1B8, 0x10),
-                  'Thieves\' Town - Ambush Chest': (0x196, 0x10),
-                  'Thieves\' Town - Attic': (0x0CA, 0x10),
-                  'Thieves\' Town - Big Chest': (0x088, 0x10),
-                  'Thieves\' Town - Blind\'s Cell': (0x08A, 0x10),
-                  'Thieves\' Town - Boss': (0x159, 0x08),
-                  'Skull Woods - Compass Chest': (0x0CE, 0x10),
-                  'Skull Woods - Map Chest': (0x0B0, 0x20),
-                  'Skull Woods - Big Chest': (0x0B0, 0x10),
-                  'Skull Woods - Pot Prison': (0x0AE, 0x20),
-                  'Skull Woods - Pinball Room': (0x0D0, 0x10),
-                  'Skull Woods - Big Key Chest': (0x0AE, 0x10),
-                  'Skull Woods - Bridge Room': (0x0B2, 0x10),
-                  'Skull Woods - Boss': (0x053, 0x08),
-                  'Ice Palace - Compass Chest': (0x05C, 0x10),
-                  'Ice Palace - Freezor Chest': (0x0FC, 0x10),
-                  'Ice Palace - Big Chest': (0x13C, 0x10),
-                  'Ice Palace - Iced T Room': (0x15C, 0x10),
-                  'Ice Palace - Spike Room': (0x0BE, 0x10),
-                  'Ice Palace - Big Key Chest': (0x03E, 0x10),
-                  'Ice Palace - Map Chest': (0x07E, 0x10),
-                  'Ice Palace - Boss': (0x1BD, 0x08),
-                  'Misery Mire - Big Chest': (0x186, 0x10),
-                  'Misery Mire - Map Chest': (0x186, 0x20),
-                  'Misery Mire - Main Lobby': (0x184, 0x10),
-                  'Misery Mire - Bridge Chest': (0x144, 0x10),
-                  'Misery Mire - Spike Chest': (0x166, 0x10),
-                  'Misery Mire - Compass Chest': (0x182, 0x10),
-                  'Misery Mire - Big Key Chest': (0x1A2, 0x10),
-                  'Misery Mire - Boss': (0x121, 0x08),
-                  'Turtle Rock - Compass Chest': (0x1AC, 0x10),
-                  'Turtle Rock - Roller Room - Left': (0x16E, 0x10),
-                  'Turtle Rock - Roller Room - Right': (0x16E, 0x20),
-                  'Turtle Rock - Chain Chomps': (0x16C, 0x10),
-                  'Turtle Rock - Big Key Chest': (0x028, 0x10),
-                  'Turtle Rock - Big Chest': (0x048, 0x10),
-                  'Turtle Rock - Crystaroller Room': (0x008, 0x10),
-                  'Turtle Rock - Eye Bridge - Bottom Left': (0x1AA, 0x80),
-                  'Turtle Rock - Eye Bridge - Bottom Right': (0x1AA, 0x40),
-                  'Turtle Rock - Eye Bridge - Top Left': (0x1AA, 0x20),
-                  'Turtle Rock - Eye Bridge - Top Right': (0x1AA, 0x10),
-                  'Turtle Rock - Boss': (0x149, 0x08),
-                  'Palace of Darkness - Shooter Room': (0x012, 0x10),
-                  'Palace of Darkness - The Arena - Bridge': (0x054, 0x20),
-                  'Palace of Darkness - Stalfos Basement': (0x014, 0x10),
-                  'Palace of Darkness - Big Key Chest': (0x074, 0x10),
-                  'Palace of Darkness - The Arena - Ledge': (0x054, 0x10),
-                  'Palace of Darkness - Map Chest': (0x056, 0x10),
-                  'Palace of Darkness - Compass Chest': (0x034, 0x20),
-                  'Palace of Darkness - Dark Basement - Left': (0x0D4, 0x10),
-                  'Palace of Darkness - Dark Basement - Right': (0x0D4, 0x20),
-                  'Palace of Darkness - Dark Maze - Top': (0x032, 0x10),
-                  'Palace of Darkness - Dark Maze - Bottom': (0x032, 0x20),
-                  'Palace of Darkness - Big Chest': (0x034, 0x10),
-                  'Palace of Darkness - Harmless Hellway': (0x034, 0x40),
-                  'Palace of Darkness - Boss': (0x0B5, 0x08),
-                  'Ganons Tower - Bob\'s Torch': (0x119, 0x04),
-                  'Ganons Tower - Hope Room - Left': (0x118, 0x20),
-                  'Ganons Tower - Hope Room - Right': (0x118, 0x40),
-                  'Ganons Tower - Tile Room': (0x11A, 0x10),
-                  'Ganons Tower - Compass Room - Top Left': (0x13A, 0x10),
-                  'Ganons Tower - Compass Room - Top Right': (0x13A, 0x20),
-                  'Ganons Tower - Compass Room - Bottom Left': (0x13A, 0x40),
-                  'Ganons Tower - Compass Room - Bottom Right': (0x13A, 0x80),
-                  'Ganons Tower - DMs Room - Top Left': (0x0F6, 0x10),
-                  'Ganons Tower - DMs Room - Top Right': (0x0F6, 0x20),
-                  'Ganons Tower - DMs Room - Bottom Left': (0x0F6, 0x40),
-                  'Ganons Tower - DMs Room - Bottom Right': (0x0F6, 0x80),
-                  'Ganons Tower - Map Chest': (0x116, 0x10),
-                  'Ganons Tower - Firesnake Room': (0x0FA, 0x10),
-                  'Ganons Tower - Randomizer Room - Top Left': (0x0F8, 0x10),
-                  'Ganons Tower - Randomizer Room - Top Right': (0x0F8, 0x20),
-                  'Ganons Tower - Randomizer Room - Bottom Left': (0x0F8, 0x40),
-                  'Ganons Tower - Randomizer Room - Bottom Right': (0x0F8, 0x80),
-                  'Ganons Tower - Bob\'s Chest': (0x118, 0x80),
-                  'Ganons Tower - Big Chest': (0x118, 0x10),
-                  'Ganons Tower - Big Key Room - Left': (0x038, 0x20),
-                  'Ganons Tower - Big Key Room - Right': (0x038, 0x40),
-                  'Ganons Tower - Big Key Chest': (0x038, 0x10),
-                  'Ganons Tower - Mini Helmasaur Room - Left': (0x07A, 0x10),
-                  'Ganons Tower - Mini Helmasaur Room - Right': (0x07A, 0x20),
-                  'Ganons Tower - Pre-Moldorm Chest': (0x07A, 0x40),
-                  'Ganons Tower - Validation Chest': (0x09A, 0x10)
-                  }
+location_table_uw = {"Blind's Hideout - Top": (0x11d, 0x10),
+                     "Blind's Hideout - Left": (0x11d, 0x20),
+                     "Blind's Hideout - Right": (0x11d, 0x40),
+                     "Blind's Hideout - Far Left": (0x11d, 0x80),
+                     "Blind's Hideout - Far Right": (0x11d, 0x100),
+                     'Secret Passage': (0x55, 0x10),
+                     'Waterfall Fairy - Left': (0x114, 0x10),
+                     'Waterfall Fairy - Right': (0x114, 0x20),
+                     "King's Tomb": (0x113, 0x10),
+                     'Floodgate Chest': (0x10b, 0x10),
+                     "Link's House": (0x104, 0x10),
+                     'Kakariko Tavern': (0x103, 0x10),
+                     'Chicken House': (0x108, 0x10),
+                     "Aginah's Cave": (0x10a, 0x10),
+                     "Sahasrahla's Hut - Left": (0x105, 0x10),
+                     "Sahasrahla's Hut - Middle": (0x105, 0x20),
+                     "Sahasrahla's Hut - Right": (0x105, 0x40),
+                     'Kakariko Well - Top': (0x2f, 0x10),
+                     'Kakariko Well - Left': (0x2f, 0x20),
+                     'Kakariko Well - Middle': (0x2f, 0x40),
+                     'Kakariko Well - Right': (0x2f, 0x80),
+                     'Kakariko Well - Bottom': (0x2f, 0x100),
+                     'Lost Woods Hideout': (0xe1, 0x200),
+                     'Lumberjack Tree': (0xe2, 0x200),
+                     'Cave 45': (0x11b, 0x400),
+                     'Graveyard Cave': (0x11b, 0x200),
+                     'Checkerboard Cave': (0x126, 0x200),
+                     'Mini Moldorm Cave - Far Left': (0x123, 0x10),
+                     'Mini Moldorm Cave - Left': (0x123, 0x20),
+                     'Mini Moldorm Cave - Right': (0x123, 0x40),
+                     'Mini Moldorm Cave - Far Right': (0x123, 0x80),
+                     'Mini Moldorm Cave - Generous Guy': (0x123, 0x400),
+                     'Ice Rod Cave': (0x120, 0x10),
+                     'Bonk Rock Cave': (0x124, 0x10),
+                     'Desert Palace - Big Chest': (0x73, 0x10),
+                     'Desert Palace - Torch': (0x73, 0x400),
+                     'Desert Palace - Map Chest': (0x74, 0x10),
+                     'Desert Palace - Compass Chest': (0x85, 0x10),
+                     'Desert Palace - Big Key Chest': (0x75, 0x10),
+                     'Desert Palace - Boss': (0x33, 0x800),
+                     'Eastern Palace - Compass Chest': (0xa8, 0x10),
+                     'Eastern Palace - Big Chest': (0xa9, 0x10),
+                     'Eastern Palace - Cannonball Chest': (0xb9, 0x10),
+                     'Eastern Palace - Big Key Chest': (0xb8, 0x10),
+                     'Eastern Palace - Map Chest': (0xaa, 0x10),
+                     'Eastern Palace - Boss': (0xc8, 0x800),
+                     'Hyrule Castle - Boomerang Chest': (0x71, 0x10),
+                     'Hyrule Castle - Map Chest': (0x72, 0x10),
+                     "Hyrule Castle - Zelda's Chest": (0x80, 0x10),
+                     'Sewers - Dark Cross': (0x32, 0x10),
+                     'Sewers - Secret Room - Left': (0x11, 0x10),
+                     'Sewers - Secret Room - Middle': (0x11, 0x20),
+                     'Sewers - Secret Room - Right': (0x11, 0x40),
+                     'Sanctuary': (0x12, 0x10),
+                     'Castle Tower - Room 03': (0xe0, 0x10),
+                     'Castle Tower - Dark Maze': (0xd0, 0x10),
+                     'Spectacle Rock Cave': (0xea, 0x400),
+                     'Paradox Cave Lower - Far Left': (0xef, 0x10),
+                     'Paradox Cave Lower - Left': (0xef, 0x20),
+                     'Paradox Cave Lower - Right': (0xef, 0x40),
+                     'Paradox Cave Lower - Far Right': (0xef, 0x80),
+                     'Paradox Cave Lower - Middle': (0xef, 0x100),
+                     'Paradox Cave Upper - Left': (0xff, 0x10),
+                     'Paradox Cave Upper - Right': (0xff, 0x20),
+                     'Spiral Cave': (0xfe, 0x10),
+                     'Tower of Hera - Basement Cage': (0x87, 0x400),
+                     'Tower of Hera - Map Chest': (0x77, 0x10),
+                     'Tower of Hera - Big Key Chest': (0x87, 0x10),
+                     'Tower of Hera - Compass Chest': (0x27, 0x20),
+                     'Tower of Hera - Big Chest': (0x27, 0x10),
+                     'Tower of Hera - Boss': (0x7, 0x800),
+                     'Hype Cave - Top': (0x11e, 0x10),
+                     'Hype Cave - Middle Right': (0x11e, 0x20),
+                     'Hype Cave - Middle Left': (0x11e, 0x40),
+                     'Hype Cave - Bottom': (0x11e, 0x80),
+                     'Hype Cave - Generous Guy': (0x11e, 0x400),
+                     'Peg Cave': (0x127, 0x400),
+                     'Pyramid Fairy - Left': (0x116, 0x10),
+                     'Pyramid Fairy - Right': (0x116, 0x20),
+                     'Brewery': (0x106, 0x10),
+                     'C-Shaped House': (0x11c, 0x10),
+                     'Chest Game': (0x106, 0x400),
+                     'Mire Shed - Left': (0x10d, 0x10),
+                     'Mire Shed - Right': (0x10d, 0x20),
+                     'Superbunny Cave - Top': (0xf8, 0x10),
+                     'Superbunny Cave - Bottom': (0xf8, 0x20),
+                     'Spike Cave': (0x117, 0x10),
+                     'Hookshot Cave - Top Right': (0x3c, 0x10),
+                     'Hookshot Cave - Top Left': (0x3c, 0x20),
+                     'Hookshot Cave - Bottom Right': (0x3c, 0x80),
+                     'Hookshot Cave - Bottom Left': (0x3c, 0x40),
+                     'Mimic Cave': (0x10c, 0x10),
+                     'Swamp Palace - Entrance': (0x28, 0x10),
+                     'Swamp Palace - Map Chest': (0x37, 0x10),
+                     'Swamp Palace - Big Chest': (0x36, 0x10),
+                     'Swamp Palace - Compass Chest': (0x46, 0x10),
+                     'Swamp Palace - Big Key Chest': (0x35, 0x10),
+                     'Swamp Palace - West Chest': (0x34, 0x10),
+                     'Swamp Palace - Flooded Room - Left': (0x76, 0x10),
+                     'Swamp Palace - Flooded Room - Right': (0x76, 0x20),
+                     'Swamp Palace - Waterfall Room': (0x66, 0x10),
+                     'Swamp Palace - Boss': (0x6, 0x800),
+                     "Thieves' Town - Big Key Chest": (0xdb, 0x20),
+                     "Thieves' Town - Map Chest": (0xdb, 0x10),
+                     "Thieves' Town - Compass Chest": (0xdc, 0x10),
+                     "Thieves' Town - Ambush Chest": (0xcb, 0x10),
+                     "Thieves' Town - Attic": (0x65, 0x10),
+                     "Thieves' Town - Big Chest": (0x44, 0x10),
+                     "Thieves' Town - Blind's Cell": (0x45, 0x10),
+                     "Thieves' Town - Boss": (0xac, 0x800),
+                     'Skull Woods - Compass Chest': (0x67, 0x10),
+                     'Skull Woods - Map Chest': (0x58, 0x20),
+                     'Skull Woods - Big Chest': (0x58, 0x10),
+                     'Skull Woods - Pot Prison': (0x57, 0x20),
+                     'Skull Woods - Pinball Room': (0x68, 0x10),
+                     'Skull Woods - Big Key Chest': (0x57, 0x10),
+                     'Skull Woods - Bridge Room': (0x59, 0x10),
+                     'Skull Woods - Boss': (0x29, 0x800),
+                     'Ice Palace - Compass Chest': (0x2e, 0x10),
+                     'Ice Palace - Freezor Chest': (0x7e, 0x10),
+                     'Ice Palace - Big Chest': (0x9e, 0x10),
+                     'Ice Palace - Iced T Room': (0xae, 0x10),
+                     'Ice Palace - Spike Room': (0x5f, 0x10),
+                     'Ice Palace - Big Key Chest': (0x1f, 0x10),
+                     'Ice Palace - Map Chest': (0x3f, 0x10),
+                     'Ice Palace - Boss': (0xde, 0x800),
+                     'Misery Mire - Big Chest': (0xc3, 0x10),
+                     'Misery Mire - Map Chest': (0xc3, 0x20),
+                     'Misery Mire - Main Lobby': (0xc2, 0x10),
+                     'Misery Mire - Bridge Chest': (0xa2, 0x10),
+                     'Misery Mire - Spike Chest': (0xb3, 0x10),
+                     'Misery Mire - Compass Chest': (0xc1, 0x10),
+                     'Misery Mire - Big Key Chest': (0xd1, 0x10),
+                     'Misery Mire - Boss': (0x90, 0x800),
+                     'Turtle Rock - Compass Chest': (0xd6, 0x10),
+                     'Turtle Rock - Roller Room - Left': (0xb7, 0x10),
+                     'Turtle Rock - Roller Room - Right': (0xb7, 0x20),
+                     'Turtle Rock - Chain Chomps': (0xb6, 0x10),
+                     'Turtle Rock - Big Key Chest': (0x14, 0x10),
+                     'Turtle Rock - Big Chest': (0x24, 0x10),
+                     'Turtle Rock - Crystaroller Room': (0x4, 0x10),
+                     'Turtle Rock - Eye Bridge - Bottom Left': (0xd5, 0x80),
+                     'Turtle Rock - Eye Bridge - Bottom Right': (0xd5, 0x40),
+                     'Turtle Rock - Eye Bridge - Top Left': (0xd5, 0x20),
+                     'Turtle Rock - Eye Bridge - Top Right': (0xd5, 0x10),
+                     'Turtle Rock - Boss': (0xa4, 0x800),
+                     'Palace of Darkness - Shooter Room': (0x9, 0x10),
+                     'Palace of Darkness - The Arena - Bridge': (0x2a, 0x20),
+                     'Palace of Darkness - Stalfos Basement': (0xa, 0x10),
+                     'Palace of Darkness - Big Key Chest': (0x3a, 0x10),
+                     'Palace of Darkness - The Arena - Ledge': (0x2a, 0x10),
+                     'Palace of Darkness - Map Chest': (0x2b, 0x10),
+                     'Palace of Darkness - Compass Chest': (0x1a, 0x20),
+                     'Palace of Darkness - Dark Basement - Left': (0x6a, 0x10),
+                     'Palace of Darkness - Dark Basement - Right': (0x6a, 0x20),
+                     'Palace of Darkness - Dark Maze - Top': (0x19, 0x10),
+                     'Palace of Darkness - Dark Maze - Bottom': (0x19, 0x20),
+                     'Palace of Darkness - Big Chest': (0x1a, 0x10),
+                     'Palace of Darkness - Harmless Hellway': (0x1a, 0x40),
+                     'Palace of Darkness - Boss': (0x5a, 0x800),
+                     "Ganons Tower - Bob's Torch": (0x8c, 0x400),
+                     'Ganons Tower - Hope Room - Left': (0x8c, 0x20),
+                     'Ganons Tower - Hope Room - Right': (0x8c, 0x40),
+                     'Ganons Tower - Tile Room': (0x8d, 0x10),
+                     'Ganons Tower - Compass Room - Top Left': (0x9d, 0x10),
+                     'Ganons Tower - Compass Room - Top Right': (0x9d, 0x20),
+                     'Ganons Tower - Compass Room - Bottom Left': (0x9d, 0x40),
+                     'Ganons Tower - Compass Room - Bottom Right': (0x9d, 0x80),
+                     'Ganons Tower - DMs Room - Top Left': (0x7b, 0x10),
+                     'Ganons Tower - DMs Room - Top Right': (0x7b, 0x20),
+                     'Ganons Tower - DMs Room - Bottom Left': (0x7b, 0x40),
+                     'Ganons Tower - DMs Room - Bottom Right': (0x7b, 0x80),
+                     'Ganons Tower - Map Chest': (0x8b, 0x10),
+                     'Ganons Tower - Firesnake Room': (0x7d, 0x10),
+                     'Ganons Tower - Randomizer Room - Top Left': (0x7c, 0x10),
+                     'Ganons Tower - Randomizer Room - Top Right': (0x7c, 0x20),
+                     'Ganons Tower - Randomizer Room - Bottom Left': (0x7c, 0x40),
+                     'Ganons Tower - Randomizer Room - Bottom Right': (0x7c, 0x80),
+                     "Ganons Tower - Bob's Chest": (0x8c, 0x80),
+                     'Ganons Tower - Big Chest': (0x8c, 0x10),
+                     'Ganons Tower - Big Key Room - Left': (0x1c, 0x20),
+                     'Ganons Tower - Big Key Room - Right': (0x1c, 0x40),
+                     'Ganons Tower - Big Key Chest': (0x1c, 0x10),
+                     'Ganons Tower - Mini Helmasaur Room - Left': (0x3d, 0x10),
+                     'Ganons Tower - Mini Helmasaur Room - Right': (0x3d, 0x20),
+                     'Ganons Tower - Pre-Moldorm Chest': (0x3d, 0x40),
+                     'Ganons Tower - Validation Chest': (0x4d, 0x10)}
+location_table_npc = {'Mushroom': 0x1000,
+                      'King Zora': 0x2,
+                      'Sahasrahla': 0x10,
+                      'Blacksmith': 0x400,
+                      'Magic Bat': 0x8000,
+                      'Sick Kid': 0x4,
+                      'Library': 0x80,
+                      'Potion Shop': 0x2000,
+                      'Old Man': 0x1,
+                      'Ether Tablet': 0x100,
+                      'Catfish': 0x20,
+                      'Stumpy': 0x8,
+                      'Bombos Tablet': 0x200}
+location_table_ow = {'Flute Spot': 0x2a,
+                     'Sunken Treasure': 0x3b,
+                     "Zora's Ledge": 0x81,
+                     'Lake Hylia Island': 0x35,
+                     'Maze Race': 0x28,
+                     'Desert Ledge': 0x30,
+                     'Master Sword Pedestal': 0x80,
+                     'Spectacle Rock': 0x3,
+                     'Pyramid': 0x5b,
+                     'Digging Game': 0x68,
+                     'Bumper Cave Ledge': 0x4a,
+                     'Floating Island': 0x5}
+location_table_misc = {'Bottle Merchant': (0x3c9, 0x2),
+                       'Purple Chest': (0x3c9, 0x10),
+                       "Link's Uncle": (0x3c6, 0x1),
+                       'Hobo': (0x3c9, 0x1)}
 
 SNES_DISCONNECTED = 0
 SNES_CONNECTING = 1
@@ -422,7 +420,6 @@ async def snes_recv_loop(ctx : Context):
 
         ctx.snes_state = SNES_DISCONNECTED
         ctx.snes_recv_queue = asyncio.Queue()
-        ctx.hud_character_data = [None] * 128
         ctx.hud_message_queue = []
 
 async def snes_read(ctx : Context, address, size):
@@ -731,7 +728,7 @@ async def console_loop(ctx : Context):
                     get_location_name_from_address(item.location), index, len(ctx.items_received)))
 
         if command[0] == '/missing':
-            for location in location_table.keys():
+            for location in [k for k, v in Regions.location_table.items() if type(v[0]) is int]:
                 if location not in ctx.locations_checked:
                     print('Missing: ' + location)
         if command[0] == '/getitem' and len(command) > 1:
@@ -742,10 +739,6 @@ async def console_loop(ctx : Context):
                 snes_buffered_write(ctx, RECV_ITEM_ADDR, bytes([item_id]))
             else:
                 print('Invalid item: ' + item)
-
-        if command[0] == '/testprint':
-            text = '0123456789_ abcdefghijklmnopqrst' + ' ' + 'abcdefghijklmnopqrstuvwxyz012345'
-            ctx.hud_message_queue.append(text)
 
         await snes_flush_writes(ctx)
 
@@ -792,6 +785,70 @@ def get_location_name_from_address(address):
     locs = [k for k, l in Regions.location_table.items() if type(l[0]) is int and l[0] == address]
     return locs[0] if locs else 'Unknown location'
 
+async def track_locations(ctx : Context):
+    new_locations = []
+    def new_check(location):
+        ctx.locations_checked.add(location)
+        print("New check: %s (%d/216)" % (location, len(ctx.locations_checked)))
+        new_locations.append(Regions.location_table[location][0])
+
+    if not all([location in ctx.locations_checked for location in location_table_uw.keys()]):
+        data = await snes_read(ctx, WRAM_START + 0x48E, 2)
+        if data is not None:
+            current_room = data[0] | (data[1] << 8)
+            data = await snes_read(ctx, WRAM_START + 0x403, 1) # todo: get those 2 values atomically
+            if data is not None:
+                roomdata = data[0] << 4 # this will always be 0 in the overworld
+                for location, (roomid, mask) in location_table_uw.items():
+                    if current_room == roomid and roomdata & mask != 0 and location not in ctx.locations_checked:
+                        new_check(location)
+
+    uw_begin = 0x129
+    uw_end = 0
+    for location, (roomid, _) in location_table_uw.items():
+        if location not in ctx.locations_checked:
+            uw_begin = min(uw_begin, roomid)
+            uw_end = max(uw_end, roomid + 1)
+    if uw_begin < uw_end:
+        uw_data = await snes_read(ctx, SAVEDATA_START + (uw_begin * 2), (uw_end - uw_begin) * 2)
+        if uw_data is not None:
+            for location, (roomid, mask) in location_table_uw.items():
+                offset = (roomid - uw_begin) * 2
+                roomdata = uw_data[offset] | (uw_data[offset + 1] << 8)
+                if roomdata & mask != 0 and location not in ctx.locations_checked:
+                    new_check(location)
+
+    ow_begin = 0x82
+    ow_end = 0
+    for location, screenid in location_table_ow.items():
+        if location not in ctx.locations_checked:
+            ow_begin = min(ow_begin, screenid)
+            ow_end = max(ow_end, screenid + 1)
+    if ow_begin < ow_end:
+        ow_data = await snes_read(ctx, SAVEDATA_START + 0x280 + ow_begin, ow_end - ow_begin)
+        if ow_data is not None:
+            for location, screenid in location_table_ow.items():
+                if ow_data[screenid - ow_begin] & 0x40 != 0 and location not in ctx.locations_checked:
+                    new_check(location)
+
+    if not all([location in ctx.locations_checked for location in location_table_npc.keys()]):
+        npc_data = await snes_read(ctx, SAVEDATA_START + 0x410, 2)
+        if npc_data is not None:
+            npc_value = npc_data[0] | (npc_data[1] << 8)
+            for location, mask in location_table_npc.items():
+                if npc_value & mask != 0 and location not in ctx.locations_checked:
+                    new_check(location)
+
+    if not all([location in ctx.locations_checked for location in location_table_misc.keys()]):
+        misc_data = await snes_read(ctx, SAVEDATA_START + 0x3c6, 4)
+        if misc_data is not None:
+            for location, (offset, mask) in location_table_misc.items():
+                assert(0x3c6 <= offset <= 0x3c9)
+                if misc_data[offset - 0x3c6] & mask != 0 and location not in ctx.locations_checked:
+                    new_check(location)
+
+    await send_msgs(ctx.socket, [['LocationChecks', new_locations]])
+
 async def game_watcher(ctx : Context):
     while not ctx.exit_event.is_set():
         await asyncio.sleep(1)
@@ -815,19 +872,7 @@ async def game_watcher(ctx : Context):
         if gamemode is None or gamemode[0] not in INGAME_MODES:
             continue
 
-        sram = await snes_read(ctx, SAVEDATA_START, 0x200)
-        if sram is None:
-            continue
-        data = await snes_read(ctx, SAVEDATA_START + 0x200, 0x212)
-        if data is None:
-            continue
-        sram += data
-
-        for location, (offset, mask) in location_table.items():
-            if sram[offset] & mask != 0 and location not in ctx.locations_checked:
-                ctx.locations_checked.add(location)
-                print("New check: %s (%d/216)" % (location, len(ctx.locations_checked)))
-                await send_msgs(ctx.socket, [['LocationChecks', [Regions.location_table[location][0]]]])
+        await track_locations(ctx)
 
         data = await snes_read(ctx, RECV_PROGRESS_ADDR, 4)
         if data is None:
@@ -845,15 +890,13 @@ async def game_watcher(ctx : Context):
             snes_buffered_write(ctx, RECV_PROGRESS_ADDR, bytes([recv_index & 0xFF, (recv_index >> 8) & 0xFF]))
             snes_buffered_write(ctx, RECV_ITEM_ADDR, bytes([item.item]))
 
-        assert(HUD_TEXT_TIMER_ADDR == RECV_PROGRESS_ADDR + 3)
-        timer = data[3]
-        if timer == 0 and len(ctx.hud_message_queue) > 0:
-            output = hud_format_text(ctx.hud_message_queue.pop(0))
-            for i, value in enumerate(output):
-                if value != ctx.hud_character_data[i]:
-                    ctx.hud_character_data[i] = value
-                    snes_buffered_write(ctx, HUD_CHARACTER_DATA + i, bytes([value]))
-            snes_buffered_write(ctx, HUD_TEXT_TIMER_ADDR, bytes([HUD_MESSAGE_TIME]))
+        # assert(HUD_TEXT_TIMER_ADDR == RECV_PROGRESS_ADDR + 3)
+        # timer = data[3]
+        # if timer == 0 and len(ctx.hud_message_queue) > 0:
+        #     output = hud_format_text(ctx.hud_message_queue.pop(0))
+        #     for i, value in enumerate(output):
+        #         snes_buffered_write(ctx, HUD_CHARACTER_DATA + i, bytes([value]))
+        #     snes_buffered_write(ctx, HUD_TEXT_TIMER_ADDR, bytes([HUD_MESSAGE_TIME]))
 
         await snes_flush_writes(ctx)
 
