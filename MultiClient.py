@@ -98,9 +98,11 @@ SAVEDATA_SIZE = 0x500
 
 RECV_PROGRESS_ADDR = SAVEDATA_START + 0x4D0     # 2 bytes
 RECV_ITEM_ADDR = SAVEDATA_START + 0x4D2         # 1 byte
-HUD_TEXT_TIMER_ADDR = SAVEDATA_START + 0x4D3    # 1 byte
-HUD_CHARACTER_DATA = WRAM_START + 0xC058        # 128 bytes
-HUD_MESSAGE_TIME = 60
+# HUD_TEXT_TIMER_ADDR = SAVEDATA_START + 0x4D3    # 1 byte
+ROOMID_ADDR = SAVEDATA_START + 0x4D4            # 2 bytes
+ROOMDATA_ADDR = SAVEDATA_START + 0x4D6          # 1 byte
+# HUD_CHARACTER_DATA = WRAM_START + 0xC058        # 128 bytes
+# HUD_MESSAGE_TIME = 60
 
 location_table_uw = {"Blind's Hideout - Top": (0x11d, 0x10),
                      "Blind's Hideout - Left": (0x11d, 0x20),
@@ -785,50 +787,47 @@ def get_location_name_from_address(address):
     locs = [k for k, l in Regions.location_table.items() if type(l[0]) is int and l[0] == address]
     return locs[0] if locs else 'Unknown location'
 
-async def track_locations(ctx : Context):
+async def track_locations(ctx : Context, roomid, roomdata):
     new_locations = []
     def new_check(location):
         ctx.locations_checked.add(location)
         print("New check: %s (%d/216)" % (location, len(ctx.locations_checked)))
         new_locations.append(Regions.location_table[location][0])
 
-    if not all([location in ctx.locations_checked for location in location_table_uw.keys()]):
-        data = await snes_read(ctx, WRAM_START + 0x48E, 2)
-        if data is not None:
-            current_room = data[0] | (data[1] << 8)
-            data = await snes_read(ctx, WRAM_START + 0x403, 1) # todo: get those 2 values atomically
-            if data is not None:
-                roomdata = data[0] << 4 # this will always be 0 in the overworld
-                for location, (roomid, mask) in location_table_uw.items():
-                    if current_room == roomid and roomdata & mask != 0 and location not in ctx.locations_checked:
-                        new_check(location)
+    for location, (loc_roomid, loc_mask) in location_table_uw.items():
+        if location not in ctx.locations_checked and loc_roomid == roomid and (roomdata << 4) & loc_mask != 0:
+            new_check(location)
 
     uw_begin = 0x129
     uw_end = 0
-    for location, (roomid, _) in location_table_uw.items():
+    uw_unchecked = {}
+    for location, (roomid, mask) in location_table_uw.items():
         if location not in ctx.locations_checked:
+            uw_unchecked[location] = (roomid, mask)
             uw_begin = min(uw_begin, roomid)
             uw_end = max(uw_end, roomid + 1)
     if uw_begin < uw_end:
         uw_data = await snes_read(ctx, SAVEDATA_START + (uw_begin * 2), (uw_end - uw_begin) * 2)
         if uw_data is not None:
-            for location, (roomid, mask) in location_table_uw.items():
+            for location, (roomid, mask) in uw_unchecked.items():
                 offset = (roomid - uw_begin) * 2
                 roomdata = uw_data[offset] | (uw_data[offset + 1] << 8)
-                if roomdata & mask != 0 and location not in ctx.locations_checked:
+                if roomdata & mask != 0:
                     new_check(location)
 
     ow_begin = 0x82
     ow_end = 0
+    ow_unchecked = {}
     for location, screenid in location_table_ow.items():
         if location not in ctx.locations_checked:
+            ow_unchecked[location] = screenid
             ow_begin = min(ow_begin, screenid)
             ow_end = max(ow_end, screenid + 1)
     if ow_begin < ow_end:
         ow_data = await snes_read(ctx, SAVEDATA_START + 0x280 + ow_begin, ow_end - ow_begin)
         if ow_data is not None:
-            for location, screenid in location_table_ow.items():
-                if ow_data[screenid - ow_begin] & 0x40 != 0 and location not in ctx.locations_checked:
+            for location, screenid in ow_unchecked.items():
+                if ow_data[screenid - ow_begin] & 0x40 != 0:
                     new_check(location)
 
     if not all([location in ctx.locations_checked for location in location_table_npc.keys()]):
@@ -851,7 +850,7 @@ async def track_locations(ctx : Context):
 
 async def game_watcher(ctx : Context):
     while not ctx.exit_event.is_set():
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
 
         if not ctx.rom_confirmed:
             rom = await snes_read(ctx, ROMNAME_START, ROMNAME_SIZE)
@@ -872,15 +871,21 @@ async def game_watcher(ctx : Context):
         if gamemode is None or gamemode[0] not in INGAME_MODES:
             continue
 
-        await track_locations(ctx)
-
-        data = await snes_read(ctx, RECV_PROGRESS_ADDR, 4)
+        data = await snes_read(ctx, RECV_PROGRESS_ADDR, 7)
         if data is None:
             continue
-        recv_index = data[0] + (data[1] * 0x100)
+
+        recv_index = data[0] | (data[1] << 8)
         assert(RECV_ITEM_ADDR == RECV_PROGRESS_ADDR + 2)
-        recving = data[2]
-        if recv_index < len(ctx.items_received) and recving == 0:
+        recv_item = data[2]
+        assert(ROOMID_ADDR == RECV_PROGRESS_ADDR + 4)
+        roomid = data[4] | (data[5] << 8)
+        assert(ROOMDATA_ADDR == RECV_PROGRESS_ADDR + 6)
+        roomdata = data[6]
+
+        await track_locations(ctx, roomid, roomdata)
+
+        if recv_index < len(ctx.items_received) and recv_item == 0:
             item = ctx.items_received[recv_index]
             print('Received %s from %s (%s) (%d/%d in list)' % (
                 color(get_item_name_from_id(item.item), 'red', 'bold'), color(item.player_name, 'yellow'),
