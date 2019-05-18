@@ -16,7 +16,7 @@ from Items import ItemFactory, item_table
 
 
 JAP10HASH = '03a63945398191337e896e5771f77173'
-RANDOMIZERBASEHASH = '7703d052caecb3cb21d65d302866b70e'
+RANDOMIZERBASEHASH = '4e0525d19b9498a726f6393a2fe7bb25'
 
 
 class JsonRom(object):
