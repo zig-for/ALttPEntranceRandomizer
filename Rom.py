@@ -16,7 +16,7 @@ from Items import ItemFactory, item_table
 
 
 JAP10HASH = '03a63945398191337e896e5771f77173'
-RANDOMIZERBASEHASH = '4e0525d19b9498a726f6393a2fe7bb25'
+RANDOMIZERBASEHASH = '7fad617d4cebf698181e4599c4c69620'
 
 
 class JsonRom(object):
@@ -275,7 +275,7 @@ class Sprite(object):
         # split into palettes of 15 colors
         return array_chunk(palette_as_colors, 15)
 
-def patch_rom(world, player, rom, hashtable, beep='normal', color='red', sprite=None):
+def patch_rom(world, player, rom, hashtable, beep='normal', color='red', sprite=None, player_names = None):
     random.seed(world.rom_seeds[player])
     # patch items
     for location in world.get_locations():
@@ -874,7 +874,7 @@ def patch_rom(world, player, rom, hashtable, beep='normal', color='red', sprite=
     ]
     rom.write_bytes(0x180215, code)
 
-    apply_rom_settings(rom, beep, color, world.quickswap, world.fastmenu, world.disable_music, sprite)
+    apply_rom_settings(rom, beep, color, world.quickswap, world.fastmenu, world.disable_music, sprite, player_names)
 
     return rom
 
@@ -909,8 +909,25 @@ def write_custom_shops(rom, world, player):
     rom.write_bytes(0x184900, items_data)
 
 
+def hud_format_text(text):
+    output = bytes()
+    for char in text.lower():
+        if 'a' <= char <= 'z':
+            output += bytes([0x5d + ord(char) - ord('a'), 0x29])
+        elif '0' <= char <= '8':
+            output += bytes([0x77 + ord(char) - ord('0'), 0x29])
+        elif char == '9':
+            output += b'\x4b\x29'
+        elif char == ' ':
+            output += b'\x7f\x00'
+        else:
+            output += b'\x2a\x29'
+    while len(output) < 32:
+        output += b'\x7f\x00'
+    return output[:32]
 
-def apply_rom_settings(rom, beep, color, quickswap, fastmenu, disable_music, sprite):
+
+def apply_rom_settings(rom, beep, color, quickswap, fastmenu, disable_music, sprite, names):
 
     # enable instant item menu
     if fastmenu == 'instant':
@@ -1025,6 +1042,10 @@ def apply_rom_settings(rom, beep, color, quickswap, fastmenu, disable_music, spr
     # write link sprite if required
     if sprite is not None:
         write_sprite(rom, sprite)
+
+    for player, name in names.items():
+        if 0 < player <= 64:
+            rom.write_bytes(0x185380 + ((player - 1) * 32), hud_format_text(name))
 
     if isinstance(rom, LocalRom):
         rom.write_crc()

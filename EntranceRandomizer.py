@@ -215,6 +215,7 @@ def start():
                             ''')
     parser.add_argument('--multi', default=1, nargs='?', type=lambda value: min(max(int(value), 1), 255))
     parser.add_argument('--skip_playthrough', action='store_true')
+    parser.add_argument('--names', default='', type=str)
     args = parser.parse_args()
 
     if is_bundled() and len(sys.argv) == 1:

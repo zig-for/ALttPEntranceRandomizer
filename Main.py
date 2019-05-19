@@ -5,6 +5,7 @@ import json
 import logging
 import pickle
 import random
+import re
 import time
 
 from BaseClasses import World, CollectionState, Item, Region, Location, Shop
@@ -119,6 +120,7 @@ def main(args, seed=None):
     else:
         sprite = None
 
+    player_names = {player: name for player, name in enumerate([n for n in re.split(r'[, ]', args.names) if n], 1)}
     outfilebase = 'ER_%s_%s-%s-%s%s_%s-%s%s%s%s%s_%s' % (world.logic, world.difficulty, world.mode, world.goal, "" if world.timer in ['none', 'display'] else "-" + world.timer, world.shuffle, world.algorithm, "-keysanity" if world.keysanity else "", "-retro" if world.retro else "", "-prog_" + world.progressive if world.progressive in ['off', 'random'] else "", "-nohints" if not world.hints else "", world.seed)
 
     jsonout = {}
@@ -132,7 +134,7 @@ def main(args, seed=None):
                 rom = JsonRom()
             else:
                 rom = LocalRom(args.rom)
-            patch_rom(world, player, rom, bytearray(logic_hash), args.heartbeep, args.heartcolor, sprite)
+            patch_rom(world, player, rom, bytearray(logic_hash), args.heartbeep, args.heartcolor, sprite, player_names)
 
             multidata.rom_names[player] = list(rom.name)
             for location in world.get_filled_locations(player):
@@ -142,7 +144,7 @@ def main(args, seed=None):
             if args.jsonout:
                 jsonout['patch%d' % player] = rom.patches
             else:
-                rom.write_to_file(output_path('%s_P%d.sfc' % (outfilebase, player)))
+                rom.write_to_file(output_path('%s_P%d%s.sfc' % (outfilebase, player, ('_' + player_names[player]) if player in player_names else '')))
 
         with open(output_path('%s_multidata' % outfilebase), 'wb') as f:
             pickle.dump(multidata, f, pickle.HIGHEST_PROTOCOL)

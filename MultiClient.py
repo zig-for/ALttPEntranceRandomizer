@@ -71,7 +71,6 @@ class Context:
         self.last_rom = None
         self.expected_rom = None
         self.rom_confirmed = False
-        self.hud_message_queue = []
 
 def color_code(*args):
     codes = {'reset': 0, 'bold': 1, 'underline': 4, 'black': 30, 'red': 31, 'green': 32, 'yellow': 33, 'blue': 34,
@@ -98,11 +97,9 @@ SAVEDATA_SIZE = 0x500
 
 RECV_PROGRESS_ADDR = SAVEDATA_START + 0x4D0     # 2 bytes
 RECV_ITEM_ADDR = SAVEDATA_START + 0x4D2         # 1 byte
-# HUD_TEXT_TIMER_ADDR = SAVEDATA_START + 0x4D3    # 1 byte
+RECV_ITEM_PLAYER_ADDR = SAVEDATA_START + 0x4D3  # 1 byte
 ROOMID_ADDR = SAVEDATA_START + 0x4D4            # 2 bytes
 ROOMDATA_ADDR = SAVEDATA_START + 0x4D6          # 1 byte
-# HUD_CHARACTER_DATA = WRAM_START + 0xC058        # 128 bytes
-# HUD_MESSAGE_TIME = 60
 
 location_table_uw = {"Blind's Hideout - Top": (0x11d, 0x10),
                      "Blind's Hideout - Left": (0x11d, 0x20),
@@ -514,7 +511,10 @@ async def snes_write(ctx : Context, write_list):
         ctx.snes_request_lock.release()
 
 def snes_buffered_write(ctx : Context, address, data):
-    ctx.snes_write_buffer.append((address, data))
+    if len(ctx.snes_write_buffer) > 0 and (ctx.snes_write_buffer[-1][0] + len(ctx.snes_write_buffer[-1][1])) == address:
+        ctx.snes_write_buffer[-1] = (ctx.snes_write_buffer[-1][0], ctx.snes_write_buffer[-1][1] + data)
+    else:
+        ctx.snes_write_buffer.append((address, data))
 
 async def snes_flush_writes(ctx : Context):
     if not ctx.snes_write_buffer:
@@ -645,8 +645,6 @@ async def process_server_cmd(ctx : Context, cmd, args):
 
     if cmd == 'ItemSent':
         player_sent, player_recvd, item, location = args
-        if player_sent == ctx.name:
-            ctx.hud_message_queue.append('%s to %s' % (get_item_name_from_id(item), player_recvd))
         item = color(get_item_name_from_id(item), 'cyan' if player_sent != ctx.name else 'green')
         player_sent = color(player_sent, 'yellow' if player_sent != ctx.name else 'magenta')
         player_recvd = color(player_recvd, 'yellow' if player_recvd != ctx.name else 'magenta')
@@ -739,6 +737,7 @@ async def console_loop(ctx : Context):
             if type(item_id) is int and item_id in range(0x100):
                 print('Sending item: ' + item)
                 snes_buffered_write(ctx, RECV_ITEM_ADDR, bytes([item_id]))
+                snes_buffered_write(ctx, RECV_ITEM_PLAYER_ADDR, bytes([0]))
             else:
                 print('Invalid item: ' + item)
 
@@ -747,34 +746,6 @@ async def console_loop(ctx : Context):
 def rom_confirmed(ctx : Context):
     ctx.rom_confirmed = True
     print('ROM hash Confirmed')
-
-def hud_format_text(text):
-    text = text.lower().replace('(','').replace(')','').replace('+','')
-    output = bytes()
-    pos = 0
-    words = text.split()
-    for word in words:
-        if pos < 32 and len(word) <= 32 < (len(word) + pos):
-            output += b'\x7f\x00' * (32 - pos)
-            pos = 32
-
-        for char in word:
-            if 'a' <= char <= 'z':
-                output += bytes([0x5d + ord(char) - ord('a'), 0x29])
-            elif '0' <= char <= '8':
-                output += bytes([0x77 + ord(char) - ord('0'), 0x29])
-            elif char == '9':
-                output += b'\x4b\x29'
-            else:
-                output += b'\x2a\x29'
-            pos += 1
-
-        if pos != 32:
-            output += b'\x7f\x00'
-            pos += 1
-    while len(output) < 128:
-        output += b'\x7f\x00'
-    return output[:128]
 
 def get_item_name_from_id(code):
     items = [k for k, i in Items.item_table.items() if type(i[3]) is int and i[3] == code]
@@ -890,18 +861,10 @@ async def game_watcher(ctx : Context):
             print('Received %s from %s (%s) (%d/%d in list)' % (
                 color(get_item_name_from_id(item.item), 'red', 'bold'), color(item.player_name, 'yellow'),
                 get_location_name_from_address(item.location), recv_index + 1, len(ctx.items_received)))
-            ctx.hud_message_queue.append('%s from %s' % (get_item_name_from_id(item.item), item.player_name))
             recv_index += 1
             snes_buffered_write(ctx, RECV_PROGRESS_ADDR, bytes([recv_index & 0xFF, (recv_index >> 8) & 0xFF]))
             snes_buffered_write(ctx, RECV_ITEM_ADDR, bytes([item.item]))
-
-        # assert(HUD_TEXT_TIMER_ADDR == RECV_PROGRESS_ADDR + 3)
-        # timer = data[3]
-        # if timer == 0 and len(ctx.hud_message_queue) > 0:
-        #     output = hud_format_text(ctx.hud_message_queue.pop(0))
-        #     for i, value in enumerate(output):
-        #         snes_buffered_write(ctx, HUD_CHARACTER_DATA + i, bytes([value]))
-        #     snes_buffered_write(ctx, HUD_TEXT_TIMER_ADDR, bytes([HUD_MESSAGE_TIME]))
+            snes_buffered_write(ctx, RECV_ITEM_PLAYER_ADDR, bytes([item.player_id]))
 
         await snes_flush_writes(ctx)
 

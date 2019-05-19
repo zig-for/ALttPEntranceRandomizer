@@ -244,21 +244,25 @@ def guiMain(args=None):
 
     bottomFrame = Frame(randomizerWindow)
 
-    seedLabel = Label(bottomFrame, text='Seed #')
-    seedVar = StringVar()
-    seedEntry = Entry(bottomFrame, textvariable=seedVar)
-    countLabel = Label(bottomFrame, text='Count')
-    countVar = StringVar()
-    countSpinbox = Spinbox(bottomFrame, from_=1, to=100, textvariable=countVar)
     worldLabel = Label(bottomFrame, text='Worlds')
     worldVar = StringVar()
-    worldSpinbox = Spinbox(bottomFrame, from_=1, to=100, textvariable=worldVar)
+    worldSpinbox = Spinbox(bottomFrame, from_=1, to=100, width=5, textvariable=worldVar)
+    namesLabel = Label(bottomFrame, text='Player Names')
+    namesVar = StringVar()
+    namesEntry = Entry(bottomFrame, textvariable=namesVar)
+    seedLabel = Label(bottomFrame, text='Seed #')
+    seedVar = StringVar()
+    seedEntry = Entry(bottomFrame, width=15, textvariable=seedVar)
+    countLabel = Label(bottomFrame, text='Count')
+    countVar = StringVar()
+    countSpinbox = Spinbox(bottomFrame, from_=1, to=100, width=5, textvariable=countVar)
 
     def generateRom():
         guiargs = Namespace
+        guiargs.multi = int(worldVar.get())
+        guiargs.names = namesVar.get()
         guiargs.seed = int(seedVar.get()) if seedVar.get() else None
         guiargs.count = int(countVar.get()) if countVar.get() != '1' else None
-        guiargs.multi = int(worldVar.get())
         guiargs.mode = modeVar.get()
         guiargs.logic = logicVar.get()
         guiargs.goal = goalVar.get()
@@ -312,6 +316,8 @@ def guiMain(args=None):
 
     worldLabel.pack(side=LEFT)
     worldSpinbox.pack(side=LEFT)
+    namesLabel.pack(side=LEFT)
+    namesEntry.pack(side=LEFT)
     seedLabel.pack(side=LEFT,  padx=(5, 0))
     seedEntry.pack(side=LEFT)
     countLabel.pack(side=LEFT, padx=(5, 0))
@@ -391,9 +397,18 @@ def guiMain(args=None):
     fastMenuLabel2 = Label(fastMenuFrame2, text='Menu speed')
     fastMenuLabel2.pack(side=LEFT)
 
+    namesFrame2 = Frame(drowDownFrame2)
+    namesLabel2 = Label(namesFrame2, text='Player Names')
+    namesVar2 = StringVar()
+    namesEntry2 = Entry(namesFrame2, textvariable=namesVar2)
+
+    namesLabel2.pack(side=LEFT)
+    namesEntry2.pack(side=LEFT)
+
     heartbeepFrame2.pack(expand=True, anchor=E)
     heartcolorFrame2.pack(expand=True, anchor=E)
     fastMenuFrame2.pack(expand=True, anchor=E)
+    namesFrame2.pack(expand=True, anchor=E)
 
     bottomFrame2 = Frame(topFrame2)
 
@@ -406,6 +421,7 @@ def guiMain(args=None):
         guiargs.disablemusic = bool(disableMusicVar.get())
         guiargs.rom = romVar2.get()
         guiargs.sprite = sprite
+        guiargs.names = namesEntry2.get()
         try:
             adjust(args=guiargs)
         except Exception as e:
