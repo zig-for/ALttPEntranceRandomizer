@@ -16,7 +16,7 @@ from Items import ItemFactory, item_table
 
 
 JAP10HASH = '03a63945398191337e896e5771f77173'
-RANDOMIZERBASEHASH = '7fad617d4cebf698181e4599c4c69620'
+RANDOMIZERBASEHASH = '5a3033344745e5c24cb38554721a768c'
 
 
 class JsonRom(object):
@@ -874,7 +874,7 @@ def patch_rom(world, player, rom, hashtable, beep='normal', color='red', sprite=
     ]
     rom.write_bytes(0x180215, code)
 
-    apply_rom_settings(rom, beep, color, world.quickswap, world.fastmenu, world.disable_music, sprite, player_names)
+    apply_rom_settings(rom, beep, color, world.quickswap, world.fastmenu, world.disable_music, sprite, player_names, False)
 
     return rom
 
@@ -927,7 +927,7 @@ def hud_format_text(text):
     return output[:32]
 
 
-def apply_rom_settings(rom, beep, color, quickswap, fastmenu, disable_music, sprite, names):
+def apply_rom_settings(rom, beep, color, quickswap, fastmenu, disable_music, sprite, names, disable_mw_notifications):
 
     # enable instant item menu
     if fastmenu == 'instant':
@@ -1043,6 +1043,10 @@ def apply_rom_settings(rom, beep, color, quickswap, fastmenu, disable_music, spr
     if sprite is not None:
         write_sprite(rom, sprite)
 
+    # disable multiworld notifications
+    rom.write_byte(0x18537F, 0 if not disable_mw_notifications else 1)
+
+    # set player names
     for player, name in names.items():
         if 0 < player <= 64:
             rom.write_bytes(0x185380 + ((player - 1) * 32), hud_format_text(name))
@@ -1081,7 +1085,7 @@ def write_strings(rom, world, player):
             elif type(dest) in [Region, Location]:
                 hint += " in p%d's world" % dest.player
             elif type(dest) is Item:
-                hint = "p%d' %s" % (dest.player, hint)
+                hint += " for p%d" % dest.player
         return hint
 
     # For hints, first we write hints about entrances, some from the inconvenient list others from all reasonable entrances.

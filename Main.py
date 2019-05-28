@@ -16,7 +16,7 @@ from Rules import set_rules
 from Dungeons import create_dungeons, fill_dungeons, fill_dungeons_restrictive
 from Fill import distribute_items_cutoff, distribute_items_staleness, distribute_items_restrictive, flood_items
 from ItemList import generate_itempool, difficulties, fill_prizes
-from Utils import output_path
+from Utils import output_path, parse_names_string
 
 __version__ = '0.6.2'
 
@@ -120,7 +120,7 @@ def main(args, seed=None):
     else:
         sprite = None
 
-    player_names = {player: name for player, name in enumerate([n for n in re.split(r'[, ]', args.names) if n], 1)}
+    player_names = parse_names_string(args.names)
     outfilebase = 'ER_%s_%s-%s-%s%s_%s-%s%s%s%s%s_%s' % (world.logic, world.difficulty, world.mode, world.goal, "" if world.timer in ['none', 'display'] else "-" + world.timer, world.shuffle, world.algorithm, "-keysanity" if world.keysanity else "", "-retro" if world.retro else "", "-prog_" + world.progressive if world.progressive in ['off', 'random'] else "", "-nohints" if not world.hints else "", world.seed)
 
     jsonout = {}

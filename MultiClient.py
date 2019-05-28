@@ -337,7 +337,7 @@ async def snes_connect(ctx : Context, address = None):
     print("Connecting to QUsb2snes at %s ..." % address)
 
     try:
-        ctx.snes_socket = await websockets.connect(address, ping_timeout=None)
+        ctx.snes_socket = await websockets.connect(address, ping_timeout=None, ping_interval=None)
         ctx.snes_state = SNES_CONNECTED
 
         DeviceList_Request = {
@@ -544,7 +544,7 @@ async def server_loop(ctx : Context):
 
     print('Connecting to multiworld server at %s' % address)
     try:
-        ctx.socket = await websockets.connect(address, ping_timeout=None)
+        ctx.socket = await websockets.connect(address, ping_timeout=None, ping_interval=None)
         print('Connected')
 
         async for data in ctx.socket:
@@ -559,7 +559,7 @@ async def server_loop(ctx : Context):
         print('Disconnected from multiworld server, type /connect to reconnect')
     except ConnectionRefusedError:
         print('Connection refused by the multiworld server')
-    except OSError:
+    except (OSError, websockets.InvalidURI):
         print('Failed to connect to the multiworld server')
     except Exception as e:
         print('Lost connection to the multiworld server, type /connect to reconnect')

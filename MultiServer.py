@@ -382,7 +382,7 @@ async def main():
         except Exception as e:
             print(e)
 
-    ctx.server = websockets.serve(functools.partial(server,ctx=ctx), ctx.host, ctx.port, ping_timeout=None)
+    ctx.server = websockets.serve(functools.partial(server,ctx=ctx), ctx.host, ctx.port, ping_timeout=None, ping_interval=None)
     await ctx.server
     await console(ctx)
 

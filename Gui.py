@@ -13,7 +13,7 @@ from AdjusterMain import adjust
 from GuiUtils import ToolTips, set_icon, BackgroundTaskProgress
 from Main import main, __version__ as ESVersion
 from Rom import Sprite
-from Utils import is_bundled, local_path, output_path, open_file
+from Utils import is_bundled, local_path, output_path, open_file, parse_names_string
 
 
 def guiMain(args=None):
@@ -310,7 +310,11 @@ def guiMain(args=None):
         except Exception as e:
             messagebox.showerror(title="Error while creating seed", message=str(e))
         else:
-            messagebox.showinfo(title="Success", message="Rom patched successfully")
+            msgtxt = "Rom patched successfully"
+            if guiargs.names:
+                for player, name in parse_names_string(guiargs.names):
+                    msgtxt += "\nPlayer %d => %s" % (player, name)
+            messagebox.showinfo(title="Success", message=msgtxt)
 
     generateButton = Button(bottomFrame, text='Generate Patched Rom', command=generateRom)
 
@@ -339,9 +343,12 @@ def guiMain(args=None):
 
     quickSwapCheckbutton2 = Checkbutton(checkBoxFrame2, text="Enabled L/R Item quickswapping", variable=quickSwapVar)
     disableMusicCheckbutton2 = Checkbutton(checkBoxFrame2, text="Disable game music", variable=disableMusicVar)
+    disableMWNotifications = IntVar()
+    disableMWNotificationsbutton = Checkbutton(checkBoxFrame2, text="Disable multiworld notifications", variable=disableMWNotifications)
 
     quickSwapCheckbutton2.pack(expand=True, anchor=W)
     disableMusicCheckbutton2.pack(expand=True, anchor=W)
+    disableMWNotificationsbutton.pack(expand=True, anchor=W)
 
     fileDialogFrame2 = Frame(rightHalfFrame2)
 
@@ -419,6 +426,7 @@ def guiMain(args=None):
         guiargs.fastmenu = fastMenuVar.get()
         guiargs.quickswap = bool(quickSwapVar.get())
         guiargs.disablemusic = bool(disableMusicVar.get())
+        guiargs.disable_notifications = bool(disableMWNotifications.get())
         guiargs.rom = romVar2.get()
         guiargs.sprite = sprite
         guiargs.names = namesEntry2.get()
@@ -427,7 +435,11 @@ def guiMain(args=None):
         except Exception as e:
             messagebox.showerror(title="Error while creating seed", message=str(e))
         else:
-            messagebox.showinfo(title="Success", message="Rom patched successfully")
+            msgtxt = "Rom patched successfully"
+            if guiargs.names:
+                for player, name in parse_names_string(guiargs.names):
+                    msgtxt += "\nPlayer %d => %s" % (player, name)
+            messagebox.showinfo(title="Success", message=msgtxt)
 
     adjustButton = Button(bottomFrame2, text='Adjust Rom', command=adjustRom)
 
