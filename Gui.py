@@ -361,6 +361,7 @@ def guiMain(args=None):
         guiargs.jsonout = None
         guiargs.sprite = sprite
         guiargs.skip_playthrough = False
+        guiargs.outputpath = None
         try:
             if guiargs.count is not None:
                 seed = guiargs.seed

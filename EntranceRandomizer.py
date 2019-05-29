@@ -8,7 +8,7 @@ import sys
 
 from Gui import guiMain
 from Main import main
-from Utils import is_bundled, close_console
+from Utils import is_bundled, close_console, output_path
 
 
 class ArgumentDefaultsHelpFormatter(argparse.RawTextHelpFormatter):
@@ -221,7 +221,11 @@ def start():
     parser.add_argument('--shufflepots', default=False, action='store_true')
     parser.add_argument('--multi', default=1, type=lambda value: min(max(int(value), 1), 255))
     parser.add_argument('--names', default='')
+    parser.add_argument('--outputpath')
     args = parser.parse_args()
+
+    if args.outputpath and os.path.isdir(args.outputpath):
+        output_path.cached_path = args.outputpath
 
     if is_bundled() and len(sys.argv) == 1:
         # for the bundled builds, if we have no arguments, the user
