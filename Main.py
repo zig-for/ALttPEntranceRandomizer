@@ -132,10 +132,15 @@ def main(args, seed=None):
         multidata.players = world.players
 
         for player in range(1, world.players + 1):
-            if args.jsonout or use_enemizer:
+            local_rom = None
+            if args.jsonout:
                 rom = JsonRom()
             else:
-                rom = LocalRom(args.rom)
+                if use_enemizer:
+                    local_rom = LocalRom(args.rom)
+                    rom = JsonRom()
+                else:
+                    rom = LocalRom(args.rom)
 
             patch_rom(world, player, rom, bytearray(logic_hash))
 
@@ -154,7 +159,6 @@ def main(args, seed=None):
                     jsonout['enemizer%d' % player] = enemizer_patch
             else:
                 if use_enemizer:
-                    local_rom = LocalRom(args.rom)
                     local_rom.patch_enemizer(rom.patches, os.path.join(os.path.dirname(args.enemizercli), "enemizerBasePatch.json"), enemizer_patch)
                     rom = local_rom
 
