@@ -17,7 +17,7 @@ from Items import ItemFactory, item_table
 
 
 JAP10HASH = '03a63945398191337e896e5771f77173'
-RANDOMIZERBASEHASH = '5a3033344745e5c24cb38554721a768c'
+RANDOMIZERBASEHASH = '804911a8ff55e0284be0ae563c1af3ef'
 
 
 class JsonRom(object):
@@ -1062,7 +1062,7 @@ def hud_format_text(text):
     return output[:32]
 
 
-def apply_rom_settings(rom, beep, color, quickswap, fastmenu, disable_music, sprite, names, disable_mw_notifications):
+def apply_rom_settings(rom, beep, color, quickswap, fastmenu, disable_music, sprite, names):
 
     # enable instant item menu
     if fastmenu == 'instant':
@@ -1177,9 +1177,6 @@ def apply_rom_settings(rom, beep, color, quickswap, fastmenu, disable_music, spr
     # write link sprite if required
     if sprite is not None:
         write_sprite(rom, sprite)
-
-    # disable multiworld notifications
-    rom.write_byte(0x18537F, 0 if not disable_mw_notifications else 1)
 
     # set player names
     for player, name in names.items():

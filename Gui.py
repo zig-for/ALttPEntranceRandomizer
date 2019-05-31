@@ -407,12 +407,9 @@ def guiMain(args=None):
 
     quickSwapCheckbutton2 = Checkbutton(checkBoxFrame2, text="Enabled L/R Item quickswapping", variable=quickSwapVar)
     disableMusicCheckbutton2 = Checkbutton(checkBoxFrame2, text="Disable game music", variable=disableMusicVar)
-    disableMWNotifications = IntVar()
-    disableMWNotificationsbutton = Checkbutton(checkBoxFrame2, text="Disable multiworld notifications", variable=disableMWNotifications)
 
     quickSwapCheckbutton2.pack(expand=True, anchor=W)
     disableMusicCheckbutton2.pack(expand=True, anchor=W)
-    disableMWNotificationsbutton.pack(expand=True, anchor=W)
 
     fileDialogFrame2 = Frame(rightHalfFrame2)
 
@@ -490,7 +487,6 @@ def guiMain(args=None):
         guiargs.fastmenu = fastMenuVar.get()
         guiargs.quickswap = bool(quickSwapVar.get())
         guiargs.disablemusic = bool(disableMusicVar.get())
-        guiargs.disable_notifications = bool(disableMWNotifications.get())
         guiargs.rom = romVar2.get()
         guiargs.sprite = sprite
         guiargs.names = namesEntry2.get()

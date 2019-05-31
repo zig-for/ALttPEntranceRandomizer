@@ -162,7 +162,7 @@ def main(args, seed=None):
                     local_rom.patch_enemizer(rom.patches, os.path.join(os.path.dirname(args.enemizercli), "enemizerBasePatch.json"), enemizer_patch)
                     rom = local_rom
 
-                apply_rom_settings(rom, args.heartbeep, args.heartcolor, world.quickswap, world.fastmenu, world.disable_music, sprite, player_names, False)
+                apply_rom_settings(rom, args.heartbeep, args.heartcolor, world.quickswap, world.fastmenu, world.disable_music, sprite, player_names)
                 rom.write_to_file(output_path('%s_P%d%s.sfc' % (outfilebase, player, ('_' + player_names[player]) if player in player_names else '')))
 
         with open(output_path('%s_multidata' % outfilebase), 'wb') as f:

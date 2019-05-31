@@ -39,7 +39,6 @@ def main():
                              sprite that will be extracted.
                              ''')
     parser.add_argument('--names', default='', type=str)
-    parser.add_argument('--disable_notifications', action='store_true', default=False)
     args = parser.parse_args()
 
     # ToDo: Validate files further than mere existance
