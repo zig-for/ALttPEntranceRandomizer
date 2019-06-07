@@ -354,8 +354,7 @@ def fill_prizes(world, attempts=15):
         unplaced_prizes = [crystal for crystal in crystals if crystal.name not in placed_prizes]
         empty_crystal_locations = [loc for loc in crystal_locations if loc.item is None]
 
-        while attempts:
-            attempts -= 1
+        for attempt in range(attempts):
             try:
                 prizepool = list(unplaced_prizes)
                 prize_locs = list(empty_crystal_locations)
