@@ -375,7 +375,7 @@ def guiMain(args=None):
         else:
             msgtxt = "Rom patched successfully"
             if guiargs.names:
-                for player, name in parse_names_string(guiargs.names):
+                for player, name in parse_names_string(guiargs.names).items():
                     msgtxt += "\nPlayer %d => %s" % (player, name)
             messagebox.showinfo(title="Success", message=msgtxt)
 
@@ -497,7 +497,7 @@ def guiMain(args=None):
         else:
             msgtxt = "Rom patched successfully"
             if guiargs.names:
-                for player, name in parse_names_string(guiargs.names):
+                for player, name in parse_names_string(guiargs.names).items():
                     msgtxt += "\nPlayer %d => %s" % (player, name)
             messagebox.showinfo(title="Success", message=msgtxt)
 
