@@ -390,13 +390,12 @@ class CollectionState(object):
             spot.recursion_count -= 1
             self.recursion_count -= 1
 
-            if type(spot) is not Location or not spot.ignore_dependencies:
-                # we only store qualified false results (i.e. ones not inside a hypothetical)
-                if not can_reach:
-                    if self.recursion_count == 0:
-                        correct_cache[spot] = can_reach
-                else:
+            # we only store qualified false results (i.e. ones not inside a hypothetical)
+            if not can_reach:
+                if self.recursion_count == 0:
                     correct_cache[spot] = can_reach
+            else:
+                correct_cache[spot] = can_reach
             return can_reach
         return correct_cache[spot]
 
@@ -778,20 +777,11 @@ class Location(object):
         self.access_rule = lambda state: True
         self.item_rule = lambda item: True
         self.player = player
-        self.ignore_dependencies = False
-        self.location_dependencies = []
 
     def can_fill(self, state, item, check_access=True):
         return self.always_allow(state, item) or (self.parent_region.can_fill(item) and self.item_rule(item) and (not check_access or self.can_reach(state)))
 
     def can_reach(self, state):
-        if not self.ignore_dependencies:
-            for location in self.location_dependencies:
-                location.ignore_dependencies = True
-                reachable = state.can_reach(location)
-                location.ignore_dependencies = False
-                if not reachable:
-                    return False
         if self.access_rule(state) and state.can_reach(self.parent_region):
             return True
         return False

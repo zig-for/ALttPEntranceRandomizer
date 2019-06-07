@@ -158,7 +158,7 @@ def distribute_items_staleness(world):
     logging.getLogger('').debug('Unplaced items: %s - Unfilled Locations: %s', [item.name for item in itempool], [location.name for location in fill_locations])
 
 
-def fill_restrictive(world, base_state, locations, itempool, multiworld_restriction=False):
+def fill_restrictive(world, base_state, locations, itempool):
     def sweep_from_pool():
         new_state = base_state.copy()
         for item in itempool:
@@ -167,15 +167,15 @@ def fill_restrictive(world, base_state, locations, itempool, multiworld_restrict
         return new_state
 
     while itempool and locations:
-        item_name = itempool[-1].name
         items_to_place = []
+        nextpool = []
         placing_players = set()
-        nextpool = itempool.copy()
-        for index, item in enumerate(itempool):
-            if item.name == item_name and item.player not in placing_players:
+        for item in reversed(itempool):
+            if item.player not in placing_players:
                 placing_players.add(item.player)
-                nextpool.remove(item)
                 items_to_place.append(item)
+            else:
+                nextpool.insert(0, item)
         itempool = nextpool
 
         maximum_exploration_state = sweep_from_pool()
@@ -184,7 +184,6 @@ def fill_restrictive(world, base_state, locations, itempool, multiworld_restrict
         if world.check_beatable_only:
             perform_access_check = not world.has_beaten_game(maximum_exploration_state)
 
-        filled_locations = []
         for item_to_place in items_to_place:
             spot_to_fill = None
             for location in locations:
@@ -203,12 +202,6 @@ def fill_restrictive(world, base_state, locations, itempool, multiworld_restrict
             world.push_item(spot_to_fill, item_to_place, False)
             locations.remove(spot_to_fill)
             spot_to_fill.event = True
-
-            if multiworld_restriction:
-                spot_to_fill.location_dependencies = filled_locations.copy()
-                for location in filled_locations:
-                    location.location_dependencies.append(spot_to_fill)
-                filled_locations.append(spot_to_fill)
 
 
 def distribute_items_restrictive(world, gftower_trash_count=0, fill_locations=None):
@@ -243,7 +236,7 @@ def distribute_items_restrictive(world, gftower_trash_count=0, fill_locations=No
     if world.keysanity and world.mode == 'standard':
         progitempool.sort(key=lambda item: 1 if item.name == 'Small Key (Escape)' else 0)
 
-    fill_restrictive(world, world.state, fill_locations, progitempool, True)
+    fill_restrictive(world, world.state, fill_locations, progitempool)
 
     random.shuffle(fill_locations)
 
