@@ -14,7 +14,7 @@ from EntranceShuffle import link_entrances
 from Rom import patch_rom, get_enemizer_patch, apply_rom_settings, Sprite, LocalRom, JsonRom
 from Rules import set_rules
 from Dungeons import create_dungeons, fill_dungeons, fill_dungeons_restrictive
-from Fill import distribute_items_cutoff, distribute_items_staleness, distribute_items_restrictive, flood_items
+from Fill import distribute_items_cutoff, distribute_items_staleness, distribute_items_restrictive, flood_items, balance_multiworld_progression
 from ItemList import generate_itempool, difficulties, fill_prizes
 from Utils import output_path, parse_names_string
 
@@ -109,6 +109,10 @@ def main(args, seed=None):
         distribute_items_restrictive(world, gt_filler(world), shuffled_locations)
     elif args.algorithm == 'balanced':
         distribute_items_restrictive(world, gt_filler(world))
+
+    if world.players > 1:
+        logger.info('Balancing multiworld progression.')
+        balance_multiworld_progression(world)
 
     logger.info('Patching ROM.')
 

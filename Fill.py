@@ -1,6 +1,9 @@
 import random
 import logging
 
+from BaseClasses import CollectionState
+
+
 class FillError(RuntimeError):
     pass
 
@@ -312,3 +315,93 @@ def flood_items(world):
                 world.push_item(location, item_to_place, True)
                 itempool.remove(item_to_place)
                 break
+
+def balance_multiworld_progression(world):
+    state = CollectionState(world)
+    checked_locations = []
+    unchecked_locations = world.get_locations().copy()
+    random.shuffle(unchecked_locations)
+
+    reachable_locations_count = {}
+    for player in range(1, world.players + 1):
+        reachable_locations_count[player] = 0
+
+    def get_sphere_locations(sphere_state, locations):
+        if not world.keysanity:
+            sphere_state.sweep_for_events(key_only=True, locations=locations)
+        return [loc for loc in locations if sphere_state.can_reach(loc)]
+
+    while True:
+        sphere_locations = get_sphere_locations(state, unchecked_locations)
+        for location in sphere_locations:
+            unchecked_locations.remove(location)
+            reachable_locations_count[location.player] += 1
+
+        if checked_locations:
+            average_reachable_locations = sum(reachable_locations_count.values()) / world.players
+            threshold = ((average_reachable_locations + max(reachable_locations_count.values())) / 2) * 0.8 #todo: probably needs some tweaking
+
+            balancing_players = [player for player, reachables in reachable_locations_count.items() if reachables < threshold]
+            if balancing_players:
+                balancing_state = state.copy()
+                balancing_unchecked_locations = unchecked_locations.copy()
+                balancing_reachables = reachable_locations_count.copy()
+                balancing_sphere = sphere_locations.copy()
+                candidate_items = []
+                while True:
+                    for location in balancing_sphere:
+                        if location.event:
+                            balancing_state.collect(location.item, True, location)
+                            if location.item.player in balancing_players:
+                                candidate_items.append(location)
+                    balancing_sphere = get_sphere_locations(balancing_state, balancing_unchecked_locations)
+                    for location in balancing_sphere:
+                        balancing_unchecked_locations.remove(location)
+                        balancing_reachables[location.player] += 1
+                    if world.has_beaten_game(balancing_state) or all([reachables >= threshold for reachables in balancing_reachables.values()]):
+                        break
+
+                unlocked_locations = [l for l in unchecked_locations if l not in balancing_unchecked_locations]
+                items_to_replace = []
+                for player in balancing_players:
+                    locations_to_test = [l for l in unlocked_locations if l.player == player]
+                    items_to_test = [l for l in candidate_items if l.item.player == player and l.player != player]
+                    while items_to_test:
+                        testing = items_to_test.pop()
+                        reducing_state = state.copy()
+                        for location in [*[l for l in items_to_replace if l.item.player == player], *items_to_test]:
+                            reducing_state.collect(location.item, True, location)
+
+                        reducing_state.sweep_for_events(locations=locations_to_test)
+
+                        if world.has_beaten_game(balancing_state):
+                            if not world.has_beaten_game(reducing_state):
+                                items_to_replace.append(testing)
+                        else:
+                            reduced_sphere = get_sphere_locations(reducing_state, locations_to_test)
+                            if reachable_locations_count[player] + len(reduced_sphere) < threshold:
+                                items_to_replace.append(testing)
+
+                replaced_items = False
+                locations_for_replacing = [l for l in checked_locations if not l.event]
+                while locations_for_replacing and items_to_replace:
+                    new_location = locations_for_replacing.pop()
+                    old_location = items_to_replace.pop()
+                    new_location.item, old_location.item = old_location.item, new_location.item
+                    new_location.event = True
+                    old_location.event = False
+                    state.collect(new_location.item, True, new_location)
+                    replaced_items = True
+                if replaced_items:
+                    for location in get_sphere_locations(state, [l for l in unlocked_locations if l.player in balancing_players]):
+                        unchecked_locations.remove(location)
+                        reachable_locations_count[location.player] += 1
+                        sphere_locations.append(location)
+
+        for location in sphere_locations:
+            if location.event:
+                state.collect(location.item, True, location)
+        checked_locations.extend(sphere_locations)
+
+        if world.has_beaten_game(state):
+            break

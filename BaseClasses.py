@@ -176,7 +176,7 @@ class World(object):
                                          p):
                     soft_collect(item)
 
-        ret.sweep_for_events(player=player)
+        ret.sweep_for_events(locations=self.get_filled_locations(player))
         ret.clear_cached_unreachable()
 
         return ret
@@ -399,12 +399,14 @@ class CollectionState(object):
             return can_reach
         return correct_cache[spot]
 
-    def sweep_for_events(self, key_only=False, player=None):
+    def sweep_for_events(self, key_only=False, locations=None):
         # this may need improvement
         new_locations = True
         checked_locations = 0
         while new_locations:
-            reachable_events = [location for location in self.world.get_filled_locations() if location.event and (player is None or player == location.player) and (not key_only or location.item.key) and self.can_reach(location)]
+            if locations is None:
+                locations = self.world.get_filled_locations()
+            reachable_events = [location for location in locations if location.event and (not key_only or location.item.key) and self.can_reach(location)]
             for event in reachable_events:
                 if (event.name, event.player) not in self.events:
                     self.events.append((event.name, event.player))
