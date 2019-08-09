@@ -421,6 +421,8 @@ async def snes_recv_loop(ctx : Context):
         ctx.snes_recv_queue = asyncio.Queue()
         ctx.hud_message_queue = []
 
+        ctx.rom_confirmed = False
+
 async def snes_read(ctx : Context, address, size):
     try:
         await ctx.snes_request_lock.acquire()
@@ -549,12 +551,7 @@ async def server_loop(ctx : Context):
 
         async for data in ctx.socket:
             for msg in json.loads(data):
-                if len(msg) == 1:
-                    cmd = msg
-                    args = None
-                else:
-                    cmd = msg[0]
-                    args = msg[1]
+                cmd, args = (msg[0], msg[1]) if len(msg) > 1 else (msg, None)
                 await process_server_cmd(ctx, cmd, args)
         print('Disconnected from multiworld server, type /connect to reconnect')
     except ConnectionRefusedError:

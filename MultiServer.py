@@ -45,7 +45,7 @@ def get_room_info(ctx : Context):
     return {
         'password': ctx.password is not None,
         'slots': ctx.world.players,
-        'players': [(client.name, client.team, client.slot) for client in ctx.clients if client.auth is True]
+        'players': [(client.name, client.team, client.slot) for client in ctx.clients if client.auth]
     }
 
 def same_name(lhs, rhs):
