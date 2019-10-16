@@ -39,7 +39,7 @@ logic_hash = [134, 166, 181, 191, 228, 89, 188, 200, 5, 157, 217, 139, 180, 198,
 
 
 def main(args, seed=None):
-    start = time.clock()
+    start = time.process_time()
 
     # initialize the world
     world = World(args.multi, args.shuffle, args.logic, args.mode, args.difficulty, args.timer, args.progressive, args.goal, args.algorithm, not args.nodungeonitems, args.beatableonly, args.shuffleganon, args.quickswap, args.fastmenu, args.disablemusic, args.keysanity, args.retro, args.custom, args.customitemarray, args.shufflebosses, args.hints)
@@ -185,7 +185,7 @@ def main(args, seed=None):
         world.spoiler.to_file(output_path('%s_Spoiler.txt' % outfilebase))
 
     logger.info('Done. Enjoy.')
-    logger.debug('Total Time: %s', time.clock() - start)
+    logger.debug('Total Time: %s', time.process_time() - start)
 
     return world
 
