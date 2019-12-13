@@ -349,7 +349,7 @@ def balance_multiworld_progression(world):
                 candidate_items = []
                 while True:
                     for location in balancing_sphere:
-                        if location.event:
+                        if location.event and (world.keysanity or not location.item.key):
                             balancing_state.collect(location.item, True, location)
                             if location.item.player in balancing_players:
                                 candidate_items.append(location)
