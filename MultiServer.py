@@ -158,6 +158,10 @@ def forfeit_player(ctx : Context, team, slot):
     notify_all(ctx, "%s (Team #%d) has forfeited" % (ctx.player_names[(team, slot)], team + 1))
     register_location_checks(ctx, team, slot, all_locations)
 
+
+def global_item_found_cb(find_player, owning_player, item):
+    logging.info(find_player + " " + owning_player + " " + item)
+
 def register_location_checks(ctx : Context, team, slot, locations):
     found_items = False
     for location in locations:
@@ -177,6 +181,9 @@ def register_location_checks(ctx : Context, team, slot, locations):
                         broadcast_team(ctx, team, [['ItemSent', (slot, location, target_player, target_item)]])
                     logging.info('(Team #%d) %s sent %s to %s (%s)' % (team+1, ctx.player_names[(team, slot)], get_item_name_from_id(target_item), ctx.player_names[(team, target_player)], get_location_name_from_address(location)))
                     found_items = True
+
+            global_item_found_cb(ctx.player_names[(team, slot)], ctx.player_names[(team, target_player)], get_item_name_from_id(target_item))
+            
     send_new_items(ctx)
 
     if found_items and not ctx.disable_save:
