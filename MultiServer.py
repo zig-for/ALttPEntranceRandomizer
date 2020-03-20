@@ -338,7 +338,7 @@ async def console(ctx : Context):
         if command[0][0] != '/':
             notify_all(ctx, '[Server]: ' + input)
 
-async def main():
+def parse_arguments(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('--host', default=None)
     parser.add_argument('--port', default=38281, type=int)
@@ -347,8 +347,13 @@ async def main():
     parser.add_argument('--savefile', default=None)
     parser.add_argument('--disable_save', default=False, action='store_true')
     parser.add_argument('--loglevel', default='info', choices=['debug', 'info', 'warning', 'error', 'critical'])
-    args = parser.parse_args()
+    return parser.parse_args(argv)
 
+async def start():
+    args = parse_arguments(None)
+    return await main(args)
+
+async def main(args):
     logging.basicConfig(format='[%(asctime)s] %(message)s', level=getattr(logging, args.loglevel.upper(), logging.INFO))
 
     ctx = Context(args.host, args.port, args.password)
@@ -402,6 +407,6 @@ async def main():
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    loop.run_until_complete(start())
     loop.run_until_complete(asyncio.gather(*asyncio.Task.all_tasks()))
     loop.close()
