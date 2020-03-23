@@ -63,6 +63,7 @@ class Context:
         self.hints_used = collections.defaultdict(int)
         self.hints_sent = collections.defaultdict(set)
         self.item_cheat = item_cheat
+        self.item_found_cb = None
 
     def get_save(self) -> dict:
         return {
@@ -84,6 +85,10 @@ class Context:
         self.location_checks.update({tuple(key): set(value) for key, value in savedata["location_checks"]})
         logging.info(f'Loaded save file with {sum([len(p) for p in received_items.values()])} received items '
                      f'for {len(received_items)} players')
+
+    def on_item_found(self, find_player, owning_player, item, location):
+        if self.item_found_cb:
+            self.item_found_cb(self, find_player, owning_player, item, location)
 
 
 async def send_msgs(websocket, msgs):
@@ -235,9 +240,6 @@ def forfeit_player(ctx: Context, team: int, slot: int):
 
 
 
-def global_item_found_cb(find_player, owning_player, item):
-    logging.info(find_player + " " + owning_player + " " + item)
-
 def register_location_checks(ctx: Context, team: int, slot: int, locations):
     ctx.location_checks[team, slot] |= set(locations)
 
@@ -261,7 +263,7 @@ def register_location_checks(ctx: Context, team: int, slot: int, locations):
                     logging.info('(Team #%d) %s sent %s to %s (%s)' % (team+1, ctx.player_names[(team, slot)], get_item_name_from_id(target_item), ctx.player_names[(team, target_player)], get_location_name_from_address(location)))
                     found_items = True
 
-            global_item_found_cb(ctx.player_names[(team, slot)], ctx.player_names[(team, target_player)], get_item_name_from_id(target_item))
+            ctx.on_item_found(ctx.player_names[(team, slot)], ctx.player_names[(team, target_player)], get_item_name_from_id(target_item), location)
             
     send_new_items(ctx)
 
@@ -324,7 +326,6 @@ def get_intended_text(input_text: str, possible_answers: typing.Iterable[str]= c
         return picks[0][0], True, "Close Match"
     else:
         return picks[0][0], False, f"Too many close matches, did you mean {picks[0][0]}?"
-
 
 async def process_client_cmd(ctx: Context, client: Client, cmd, args):
     if type(cmd) is not str:
