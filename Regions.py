@@ -296,19 +296,23 @@ def create_regions(world, player):
     world.initialize_regions()
 
 
-def create_lw_region(player, name, locations=None, exits=None):
+def create_lw_region(player: int, name: str, locations=None, exits=None):
     return _create_region(player, name, RegionType.LightWorld, 'Light World', locations, exits)
 
-def create_dw_region(player, name, locations=None, exits=None):
+
+def create_dw_region(player: int, name: str, locations=None, exits=None):
     return _create_region(player, name, RegionType.DarkWorld, 'Dark World', locations, exits)
 
-def create_cave_region(player, name, hint='Hyrule', locations=None, exits=None):
+
+def create_cave_region(player: int, name: str, hint: str, locations=None, exits=None):
     return _create_region(player, name, RegionType.Cave, hint, locations, exits)
 
-def create_dungeon_region(player, name, hint='Hyrule', locations=None, exits=None):
+
+def create_dungeon_region(player: int, name: str, hint: str, locations=None, exits=None):
     return _create_region(player, name, RegionType.Dungeon, hint, locations, exits)
 
-def _create_region(player, name, type, hint='Hyrule', locations=None, exits=None):
+
+def _create_region(player: int, name: str, type: RegionType, hint: str, locations=None, exits=None):
     ret = Region(name, type, hint, player)
     if locations is None:
         locations = []
@@ -322,7 +326,8 @@ def _create_region(player, name, type, hint='Hyrule', locations=None, exits=None
         ret.locations.append(Location(player, location, address, crystal, hint_text, ret, player_address))
     return ret
 
-def mark_light_world_regions(world, player):
+
+def mark_light_world_regions(world, player: int):
     # cross world caves may have some sections marked as both in_light_world, and in_dark_work.
     # That is ok. the bunny logic will check for this case and incorporate special rules.
     queue = collections.deque(region for region in world.get_regions(player) if region.type == RegionType.LightWorld)
@@ -352,7 +357,7 @@ def mark_light_world_regions(world, player):
                 queue.append(exit.connected_region)
 
 
-def create_shops(world, player):
+def create_shops(world, player: int):
     for region_name, (room_id, type, shopkeeper, custom, locked, inventory) in shop_table.items():
         if world.mode[player] == 'inverted' and region_name == 'Dark Lake Hylia Shop':
             locked = True
@@ -607,11 +612,22 @@ location_table = {'Mushroom': (0x180013, 0x186338, False, 'in the woods'),
                   'Dark Blacksmith Ruins': (None, None, False, None),
                   'Eastern Palace - Prize': ([0x1209D, 0x53EF8, 0x53EF9, 0x180052, 0x18007C, 0xC6FE], None, True, 'Eastern Palace'),
                   'Desert Palace - Prize': ([0x1209E, 0x53F1C, 0x53F1D, 0x180053, 0x180078, 0xC6FF], None, True, 'Desert Palace'),
-                  'Tower of Hera - Prize': ([0x120A5, 0x53F0A, 0x53F0B, 0x18005A, 0x18007A, 0xC706], None, True, 'Tower of Hera'),
-                  'Palace of Darkness - Prize': ([0x120A1, 0x53F00, 0x53F01, 0x180056, 0x18007D, 0xC702], None, True, 'Palace of Darkness'),
-                  'Swamp Palace - Prize': ([0x120A0, 0x53F6C, 0x53F6D, 0x180055, 0x180071, 0xC701], None, True, 'Swamp Palace'),
-                  'Thieves\' Town - Prize': ([0x120A6, 0x53F36, 0x53F37, 0x18005B, 0x180077, 0xC707], None, True, 'Thieves\' Town'),
-                  'Skull Woods - Prize': ([0x120A3, 0x53F12, 0x53F13, 0x180058, 0x18007B, 0xC704], None, True, 'Skull Woods'),
-                  'Ice Palace - Prize': ([0x120A4, 0x53F5A, 0x53F5B, 0x180059, 0x180073, 0xC705], None, True, 'Ice Palace'),
-                  'Misery Mire - Prize': ([0x120A2, 0x53F48, 0x53F49, 0x180057, 0x180075, 0xC703], None, True, 'Misery Mire'),
-                  'Turtle Rock - Prize': ([0x120A7, 0x53F24, 0x53F25, 0x18005C, 0x180079, 0xC708], None, True, 'Turtle Rock')}
+                  'Tower of Hera - Prize': (
+                  [0x120A5, 0x53F0A, 0x53F0B, 0x18005A, 0x18007A, 0xC706], None, True, 'Tower of Hera'),
+                  'Palace of Darkness - Prize': (
+                  [0x120A1, 0x53F00, 0x53F01, 0x180056, 0x18007D, 0xC702], None, True, 'Palace of Darkness'),
+                  'Swamp Palace - Prize': (
+                  [0x120A0, 0x53F6C, 0x53F6D, 0x180055, 0x180071, 0xC701], None, True, 'Swamp Palace'),
+                  'Thieves\' Town - Prize': (
+                  [0x120A6, 0x53F36, 0x53F37, 0x18005B, 0x180077, 0xC707], None, True, 'Thieves\' Town'),
+                  'Skull Woods - Prize': (
+                  [0x120A3, 0x53F12, 0x53F13, 0x180058, 0x18007B, 0xC704], None, True, 'Skull Woods'),
+                  'Ice Palace - Prize': (
+                  [0x120A4, 0x53F5A, 0x53F5B, 0x180059, 0x180073, 0xC705], None, True, 'Ice Palace'),
+                  'Misery Mire - Prize': (
+                  [0x120A2, 0x53F48, 0x53F49, 0x180057, 0x180075, 0xC703], None, True, 'Misery Mire'),
+                  'Turtle Rock - Prize': (
+                  [0x120A7, 0x53F24, 0x53F25, 0x18005C, 0x180079, 0xC708], None, True, 'Turtle Rock')}
+
+lookup_id_to_name = {data[0]: name for name, data in location_table.items() if type(data[0]) == int}
+lookup_id_to_name[-1] = "cheat console"

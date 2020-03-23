@@ -15,3 +15,7 @@ EnemizerCLI/
 .mypy_cache/
 RaceRom.py
 weights/
+/MultiMystery/
+/Players/
+/QUsb2Snes/
+/options.yaml

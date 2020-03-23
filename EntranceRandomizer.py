@@ -208,6 +208,7 @@ def parse_arguments(argv, no_defaults=False):
                              ''')
     parser.add_argument('--quickswap', help='Enable quick item swapping with L and R.', action='store_true')
     parser.add_argument('--disablemusic', help='Disables game music.', action='store_true')
+    parser.add_argument('--extendedmsu', help='Use v31 Extended msu', action='store_true')
     parser.add_argument('--mapshuffle', default=defval(False), help='Maps are no longer restricted to their dungeons, but can be anywhere', action='store_true')
     parser.add_argument('--compassshuffle', default=defval(False), help='Compasses are no longer restricted to their dungeons, but can be anywhere', action='store_true')
     parser.add_argument('--keyshuffle', default=defval(False), help='Small Keys are no longer restricted to their dungeons, but can be anywhere', action='store_true')
@@ -273,27 +274,33 @@ def parse_arguments(argv, no_defaults=False):
     parser.add_argument('--outputpath')
     parser.add_argument('--race', default=defval(False), action='store_true')
     parser.add_argument('--outputname')
+    parser.add_argument('--create_diff', default=defval(False), action='store_true', help='''\
+    create a binary patch file from which the randomized rom can be recreated using MultiClient.
+    Does not work with jsonout.''')
 
     if multiargs.multi:
         for player in range(1, multiargs.multi + 1):
             parser.add_argument(f'--p{player}', default=defval(''), help=argparse.SUPPRESS)
 
     ret = parser.parse_args(argv)
+    if ret.timer == "none":
+        ret.timer = False
     if ret.keysanity:
         ret.mapshuffle, ret.compassshuffle, ret.keyshuffle, ret.bigkeyshuffle = [True] * 4
 
     if multiargs.multi:
         defaults = copy.deepcopy(ret)
         for player in range(1, multiargs.multi + 1):
-            playerargs = parse_arguments(shlex.split(getattr(ret,f"p{player}")), True)
+            playerargs = parse_arguments(shlex.split(getattr(ret, f"p{player}")), True)
 
             for name in ['logic', 'mode', 'swords', 'goal', 'difficulty', 'item_functionality',
-                         'shuffle', 'crystals_ganon', 'crystals_gt', 'openpyramid',
+                         'shuffle', 'crystals_ganon', 'crystals_gt', 'openpyramid', 'timer',
                          'mapshuffle', 'compassshuffle', 'keyshuffle', 'bigkeyshuffle', 'startinventory',
                          'retro', 'accessibility', 'hints', 'beemizer',
                          'shufflebosses', 'shuffleenemies', 'enemy_health', 'enemy_damage', 'shufflepots',
-                         'ow_palettes', 'uw_palettes', 'sprite', 'disablemusic', 'quickswap', 'fastmenu', 'heartcolor', 'heartbeep',
-                         'remote_items']:
+                         'ow_palettes', 'uw_palettes', 'sprite', 'disablemusic', 'quickswap', 'fastmenu', 'heartcolor',
+                         'heartbeep',
+                         'remote_items', 'progressive', 'extendedmsu']:
                 value = getattr(defaults, name) if getattr(playerargs, name) is None else getattr(playerargs, name)
                 if player == 1:
                     setattr(ret, name, {1: value})

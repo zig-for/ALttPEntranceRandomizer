@@ -13,7 +13,7 @@ from Items import ItemFactory
 #This file sets the item pools for various modes. Timed modes and triforce hunt are enforced first, and then extra items are specified per mode to fill in the remaining space.
 #Some basic items that various modes require are placed here, including pendants and crystals. Medallion requirements for the two relevant entrances are also decided.
 
-alwaysitems = ['Bombos', 'Book of Mudora', 'Cane of Somaria', 'Ether', 'Fire Rod', 'Flippers', 'Ocarina', 'Hammer', 'Hookshot', 'Ice Rod', 'Lamp',
+alwaysitems = ['Bombos', 'Book of Mudora', 'Cane of Somaria', 'Ether', 'Fire Rod', 'Flippers', 'Flute', 'Hammer', 'Hookshot', 'Ice Rod', 'Lamp',
                'Cape', 'Magic Powder', 'Mushroom', 'Pegasus Boots', 'Quake', 'Shovel', 'Bug Catching Net', 'Cane of Byrna', 'Blue Boomerang', 'Red Boomerang']
 progressivegloves = ['Progressive Glove'] * 2
 basicgloves = ['Power Glove', 'Titans Mitts']
@@ -125,12 +125,19 @@ difficulties = {
 }
 
 def generate_itempool(world, player):
-    if (world.difficulty[player] not in ['normal', 'hard', 'expert'] or world.goal[player] not in ['ganon', 'pedestal', 'dungeons', 'triforcehunt', 'crystals']
-            or world.mode[player] not in ['open', 'standard', 'inverted'] or world.timer not in ['none', 'display', 'timed', 'timed-ohko', 'ohko', 'timed-countdown'] or world.progressive not in ['on', 'off', 'random']):
+    if (world.difficulty[player] not in ['normal', 'hard', 'expert'] or world.goal[player] not in ['ganon', 'pedestal',
+                                                                                                   'dungeons',
+                                                                                                   'triforcehunt',
+                                                                                                   'crystals']
+            or world.mode[player] not in ['open', 'standard', 'inverted'] or world.timer[player] not in [False,
+                                                                                                         'display',
+                                                                                                         'timed',
+                                                                                                         'timed-ohko',
+                                                                                                         'ohko',
+                                                                                                         'timed-countdown']):
         raise NotImplementedError('Not supported yet')
-
-    if world.timer in ['ohko', 'timed-ohko']:
-        world.can_take_damage = False
+    if world.timer[player] in ['ohko', 'timed-ohko']:
+        world.can_take_damage[player] = False
 
     if world.goal[player] in ['pedestal', 'triforcehunt']:
         world.push_item(world.get_location('Ganon', player), ItemFactory('Nothing', player), False)
@@ -174,10 +181,17 @@ def generate_itempool(world, player):
 
     # set up item pool
     if world.custom:
-        (pool, placed_items, precollected_items, clock_mode, treasure_hunt_count, treasure_hunt_icon, lamps_needed_for_dark_rooms) = make_custom_item_pool(world.progressive, world.shuffle[player], world.difficulty[player], world.timer, world.goal[player], world.mode[player], world.swords[player], world.retro[player], world.customitemarray)
+        (pool, placed_items, precollected_items, clock_mode, treasure_hunt_count, treasure_hunt_icon,
+         lamps_needed_for_dark_rooms) = make_custom_item_pool(world.progressive[player], world.shuffle[player],
+                                                              world.difficulty[player], world.timer[player], world.goal[player],
+                                                              world.mode[player], world.swords[player],
+                                                              world.retro[player], world.customitemarray)
         world.rupoor_cost = min(world.customitemarray[69], 9999)
     else:
-        (pool, placed_items, precollected_items, clock_mode, treasure_hunt_count, treasure_hunt_icon, lamps_needed_for_dark_rooms) = get_pool_core(world.progressive, world.shuffle[player], world.difficulty[player], world.timer, world.goal[player], world.mode[player], world.swords[player], world.retro[player])
+        (pool, placed_items, precollected_items, clock_mode, treasure_hunt_count, treasure_hunt_icon,
+         lamps_needed_for_dark_rooms) = get_pool_core(world.progressive[player], world.shuffle[player],
+                                                      world.difficulty[player], world.timer[player], world.goal[player],
+                                                      world.mode[player], world.swords[player], world.retro[player])
 
     for item in precollected_items:
         world.push_precollected(ItemFactory(item, player))
@@ -214,7 +228,7 @@ def generate_itempool(world, player):
     world.lamps_needed_for_dark_rooms = lamps_needed_for_dark_rooms
 
     if clock_mode is not None:
-        world.clock_mode = clock_mode
+        world.clock_mode[player] = clock_mode
 
     if treasure_hunt_count is not None:
         world.treasure_hunt_count[player] = treasure_hunt_count
@@ -285,7 +299,7 @@ def set_up_take_anys(world, player):
 
     reg = regions.pop()
     entrance = world.get_region(reg, player).entrances[0]
-    connect_entrance(world, entrance, old_man_take_any, player)
+    connect_entrance(world, entrance.name, old_man_take_any.name, player)
     entrance.target = 0x58
     old_man_take_any.shop = Shop(old_man_take_any, 0x0112, ShopType.TakeAny, 0xE2, True, True)
     world.shops.append(old_man_take_any.shop)
@@ -307,7 +321,7 @@ def set_up_take_anys(world, player):
         target, room_id = random.choice([(0x58, 0x0112), (0x60, 0x010F), (0x46, 0x011F)])
         reg = regions.pop()
         entrance = world.get_region(reg, player).entrances[0]
-        connect_entrance(world, entrance, take_any, player)
+        connect_entrance(world, entrance.name, take_any.name, player)
         entrance.target = target
         take_any.shop = Shop(take_any, room_id, ShopType.TakeAny, 0xE3, True, True)
         world.shops.append(take_any.shop)
@@ -402,7 +416,7 @@ def get_pool_core(progressive, shuffle, difficulty, timer, goal, mode, swords, r
     lamps_needed_for_dark_rooms = 1
 
     # insanity shuffle doesn't have fake LW/DW logic so for now guaranteed Mirror and Moon Pearl at the start
-    if  shuffle == 'insanity_legacy':
+    if shuffle == 'insanity_legacy':
         place_item('Link\'s House', 'Magic Mirror')
         place_item('Sanctuary', 'Moon Pearl')
     else:
@@ -456,9 +470,10 @@ def get_pool_core(progressive, shuffle, difficulty, timer, goal, mode, swords, r
         else:
             place_item('Master Sword Pedestal', 'Triforce')
     else:
-        pool.extend(diff.progressivesword if want_progressives() else diff.basicsword)
+        progressive_swords = want_progressives()
+        pool.extend(diff.progressivesword if progressive_swords else diff.basicsword)
         if swords == 'assured':
-            if want_progressives():
+            if progressive_swords:
                 precollected_items.append('Progressive Sword')
                 pool.remove('Progressive Sword')
             else:
@@ -541,7 +556,7 @@ def make_custom_item_pool(progressive, shuffle, difficulty, timer, goal, mode, s
     pool.extend(['Lamp'] * customitemarray[12])
     pool.extend(['Hammer'] * customitemarray[13])
     pool.extend(['Shovel'] * customitemarray[14])
-    pool.extend(['Ocarina'] * customitemarray[15])
+    pool.extend(['Flute'] * customitemarray[15])
     pool.extend(['Bug Catching Net'] * customitemarray[16])
     pool.extend(['Book of Mudora'] * customitemarray[17])
     pool.extend(['Cane of Somaria'] * customitemarray[19])
@@ -656,13 +671,14 @@ def make_custom_item_pool(progressive, shuffle, difficulty, timer, goal, mode, s
 def test():
     for difficulty in ['normal', 'hard', 'expert']:
         for goal in ['ganon', 'triforcehunt', 'pedestal']:
-            for timer in ['none', 'display', 'timed', 'timed-ohko', 'ohko', 'timed-countdown']:
+            for timer in [False, 'display', 'timed', 'timed-ohko', 'ohko', 'timed-countdown']:
                 for mode in ['open', 'standard', 'inverted']:
                     for swords in ['random', 'assured', 'swordless', 'vanilla']:
                         for progressive in ['on', 'off']:
                             for shuffle in ['full', 'insanity_legacy']:
                                 for retro in [True, False]:
-                                    out = get_pool_core(progressive, shuffle, difficulty, timer, goal, mode, swords, retro)
+                                    out = get_pool_core(progressive, shuffle, difficulty, timer, goal, mode, swords,
+                                                        retro)
                                     count = len(out[0]) + len(out[1])
 
                                     correct_count = total_items_to_place

@@ -10,6 +10,9 @@ from tkinter import Checkbutton, OptionMenu, Toplevel, LabelFrame, PhotoImage, T
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
+import ModuleUpdate
+ModuleUpdate.update()
+
 from AdjusterMain import adjust
 from EntranceRandomizer import parse_arguments
 from GuiUtils import ToolTips, set_icon, BackgroundTaskProgress
@@ -413,6 +416,8 @@ def guiMain(args=None):
         guiargs.difficulty = difficultyVar.get()
         guiargs.item_functionality = itemfunctionVar.get()
         guiargs.timer = timerVar.get()
+        if guiargs.timer == "none":
+            guiargs.timer = False
         guiargs.progressive = progressiveVar.get()
         guiargs.accessibility = accessibilityVar.get()
         guiargs.algorithm = algorithmVar.get()

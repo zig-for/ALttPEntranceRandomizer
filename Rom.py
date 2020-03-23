@@ -72,14 +72,15 @@ class JsonRom(object):
 
 class LocalRom(object):
 
-    def __init__(self, file, patch=True, name=None, hash=None):
+    def __init__(self, file, extendedmsu=False, patch=True, name=None, hash=None):
         self.name = name
         self.hash = hash
         self.orig_buffer = None
+        self.extendedmsu = extendedmsu
         with open(file, 'rb') as stream:
             self.buffer = read_rom(stream)
         if patch:
-            self.patch_base_rom()
+            self.patch_base_rom(extendedmsu)
             self.orig_buffer = self.buffer.copy()
 
     def write_byte(self, address, value):
@@ -94,25 +95,25 @@ class LocalRom(object):
             outfile.write(self.buffer)
 
     @staticmethod
-    def fromJsonRom(rom, file, rom_size = 0x200000):
-        ret = LocalRom(file, True, rom.name, rom.hash)
-        ret.buffer.extend(bytearray([0x00] * (rom_size - len(ret.buffer))))
+    def fromJsonRom(rom, file, rom_size = 0x200000, extendedmsu=False):
+        ret = LocalRom(file, extendedmsu, True, rom.name, rom.hash)
+        ret.buffer.extend(bytearray([0x00]) * (rom_size - len(ret.buffer)))
         for address, values in rom.patches.items():
             ret.write_bytes(int(address), values)
         return ret
 
-    def patch_base_rom(self):
+    def patch_base_rom(self, extendedmsu):
         # verify correct checksum of baserom
         basemd5 = hashlib.md5()
         basemd5.update(self.buffer)
         if JAP10HASH != basemd5.hexdigest():
             logging.getLogger('').warning('Supplied Base Rom does not match known MD5 for JAP(1.0) release. Will try to patch anyway.')
-
+        
         # extend to 2MB
-        self.buffer.extend(bytearray([0x00] * (0x200000 - len(self.buffer))))
+        self.buffer.extend(bytearray([0x00]) * (0x200000 - len(self.buffer)))
 
         # load randomizer patches
-        with open(local_path('data/base2current.json'), 'r') as stream:
+        with open(local_path('data/base2current.json') if not extendedmsu else local_path('data/base2current_extendedmsu.json'), 'r') as stream:
             patches = json.load(stream)
         for patch in patches:
             if isinstance(patch, dict):
@@ -156,13 +157,14 @@ def read_rom(stream):
         buffer = buffer[0x200:]
     return buffer
 
-def patch_enemizer(world, player, rom, baserom_path, enemizercli, shufflepots, random_sprite_on_hit):
+def patch_enemizer(world, player, rom, baserom_path, enemizercli, shufflepots, random_sprite_on_hit, extendedmsu):
     baserom_path = os.path.abspath(baserom_path)
-    basepatch_path = os.path.abspath(local_path('data/base2current.json'))
+    basepatch_path = os.path.abspath(
+        local_path('data/base2current.json') if not extendedmsu else local_path('data/base2current_extendedmsu.json'))
     enemizer_basepatch_path = os.path.join(os.path.dirname(enemizercli), "enemizerBasePatch.json")
-    randopatch_path = os.path.abspath(output_path('enemizer_randopatch.json'))
-    options_path = os.path.abspath(output_path('enemizer_options.json'))
-    enemizer_output_path = os.path.abspath(output_path('enemizer_output.json'))
+    randopatch_path = os.path.abspath(output_path(f'enemizer_randopatch_{player}.json'))
+    options_path = os.path.abspath(output_path(f'enemizer_options_{player}.json'))
+    enemizer_output_path = os.path.abspath(output_path(f'enemizer_output_{player}.json'))
 
     # write options file for enemizer
     options = {
@@ -170,7 +172,8 @@ def patch_enemizer(world, player, rom, baserom_path, enemizercli, shufflepots, r
         'RandomizeEnemiesType': 3,
         'RandomizeBushEnemyChance': world.enemy_shuffle[player] == 'chaos',
         'RandomizeEnemyHealthRange': world.enemy_health[player] != 'default',
-        'RandomizeEnemyHealthType': {'default': 0, 'easy': 0, 'normal': 1, 'hard': 2, 'expert': 3}[world.enemy_health[player]],
+        'RandomizeEnemyHealthType': {'default': 0, 'easy': 0, 'normal': 1, 'hard': 2, 'expert': 3}[
+            world.enemy_health[player]],
         'OHKO': False,
         'RandomizeEnemyDamage': world.enemy_damage[player] != 'default',
         'AllowEnemyZeroDamage': True,
@@ -283,20 +286,12 @@ def patch_enemizer(world, player, rom, baserom_path, enemizercli, shufflepots, r
                 rom.write_bytes(0x307000 + (i * 0x8000), sprite.palette)
                 rom.write_bytes(0x307078 + (i * 0x8000), sprite.glove_palette)
 
-    try:
-        os.remove(randopatch_path)
-    except OSError:
-        pass
+    for used in (randopatch_path, options_path, enemizer_output_path):
+        try:
+            os.remove(used)
+        except OSError:
+            pass
 
-    try:
-        os.remove(options_path)
-    except OSError:
-        pass
-
-    try:
-        os.remove(enemizer_output_path)
-    except OSError:
-        pass
 
 _sprite_table = {}
 def _populate_sprite_table():
@@ -706,7 +701,7 @@ def patch_rom(world, rom, player, team, enemized):
         # Set stun items
         rom.write_byte(0x180180, 0x03) # All standard items
         #Set overflow items for progressive equipment
-        if world.timer in ['timed', 'timed-countdown', 'timed-ohko']:
+        if world.timer[player] in ['timed', 'timed-countdown', 'timed-ohko']:
             overflow_replacement = GREEN_CLOCK
         else:
             overflow_replacement = GREEN_TWENTY_RUPEES
@@ -860,19 +855,19 @@ def patch_rom(world, rom, player, team, enemized):
         ERtimeincrease = 20
     if world.keyshuffle[player] or world.bigkeyshuffle[player] or world.mapshuffle[player]:
         ERtimeincrease = ERtimeincrease + 15
-    if world.clock_mode == 'off':
+    if world.clock_mode[player] == False:
         rom.write_bytes(0x180190, [0x00, 0x00, 0x00])  # turn off clock mode
         write_int32(rom, 0x180200, 0)  # red clock adjustment time (in frames, sint32)
         write_int32(rom, 0x180204, 0)  # blue clock adjustment time (in frames, sint32)
         write_int32(rom, 0x180208, 0)  # green clock adjustment time (in frames, sint32)
         write_int32(rom, 0x18020C, 0)  # starting time (in frames, sint32)
-    elif world.clock_mode == 'ohko':
+    elif world.clock_mode[player] == 'ohko':
         rom.write_bytes(0x180190, [0x01, 0x02, 0x01])  # ohko timer with resetable timer functionality
         write_int32(rom, 0x180200, 0)  # red clock adjustment time (in frames, sint32)
         write_int32(rom, 0x180204, 0)  # blue clock adjustment time (in frames, sint32)
         write_int32(rom, 0x180208, 0)  # green clock adjustment time (in frames, sint32)
         write_int32(rom, 0x18020C, 0)  # starting time (in frames, sint32)
-    elif world.clock_mode == 'countdown-ohko':
+    elif world.clock_mode[player] == 'countdown-ohko':
         rom.write_bytes(0x180190, [0x01, 0x02, 0x01])  # ohko timer with resetable timer functionality
         write_int32(rom, 0x180200, -100 * 60 * 60 * 60)  # red clock adjustment time (in frames, sint32)
         write_int32(rom, 0x180204, 2 * 60 * 60)  # blue clock adjustment time (in frames, sint32)
@@ -881,13 +876,13 @@ def patch_rom(world, rom, player, team, enemized):
             write_int32(rom, 0x18020C, (10 + ERtimeincrease) * 60 * 60)  # starting time (in frames, sint32)
         else:
             write_int32(rom, 0x18020C, int((5 + ERtimeincrease / 2) * 60 * 60))  # starting time (in frames, sint32)
-    if world.clock_mode == 'stopwatch':
+    if world.clock_mode[player] == 'stopwatch':
         rom.write_bytes(0x180190, [0x02, 0x01, 0x00])  # set stopwatch mode
         write_int32(rom, 0x180200, -2 * 60 * 60)  # red clock adjustment time (in frames, sint32)
         write_int32(rom, 0x180204, 2 * 60 * 60)  # blue clock adjustment time (in frames, sint32)
         write_int32(rom, 0x180208, 4 * 60 * 60)  # green clock adjustment time (in frames, sint32)
         write_int32(rom, 0x18020C, 0)  # starting time (in frames, sint32)
-    if world.clock_mode == 'countdown':
+    if world.clock_mode[player] == 'countdown':
         rom.write_bytes(0x180190, [0x01, 0x01, 0x00])  # set countdown, with no reset available
         write_int32(rom, 0x180200, -2 * 60 * 60)  # red clock adjustment time (in frames, sint32)
         write_int32(rom, 0x180204, 2 * 60 * 60)  # blue clock adjustment time (in frames, sint32)
@@ -1013,7 +1008,7 @@ def patch_rom(world, rom, player, team, enemized):
                     'Big Key (Turtle Rock)': (0x366, 0x08), 'Compass (Turtle Rock)': (0x364, 0x08), 'Map (Turtle Rock)': (0x368, 0x08),
                     'Big Key (Ganons Tower)': (0x366, 0x04), 'Compass (Ganons Tower)': (0x364, 0x04), 'Map (Ganons Tower)': (0x368, 0x04)}
         set_or_table = {'Flippers': (0x356, 1, 0x379, 0x02),'Pegasus Boots': (0x355, 1, 0x379, 0x04),
-                        'Shovel': (0x34C, 1, 0x38C, 0x04), 'Ocarina': (0x34C, 3, 0x38C, 0x01),
+                        'Shovel': (0x34C, 1, 0x38C, 0x04), 'Flute': (0x34C, 3, 0x38C, 0x01),
                         'Mushroom': (0x344, 1, 0x38C, 0x20 | 0x08), 'Magic Powder': (0x344, 2, 0x38C, 0x10),
                         'Blue Boomerang': (0x341, 1, 0x38C, 0x80), 'Red Boomerang': (0x341, 2, 0x38C, 0x40)}
         keys = {'Small Key (Eastern Palace)': [0x37E], 'Small Key (Desert Palace)': [0x37F],
@@ -1118,7 +1113,7 @@ def patch_rom(world, rom, player, team, enemized):
     rom.write_byte(0x18003B, 0x01 if world.mapshuffle[player] else 0x00)  # maps showing crystals on overworld
 
     # compasses showing dungeon count
-    if world.clock_mode != 'off':
+    if world.clock_mode[player]:
         rom.write_byte(0x18003C, 0x00)  # Currently must be off if timer is on, because they use same HUD location
     elif world.compassshuffle[player]:
         rom.write_byte(0x18003C, 0x01)  # show on pickup
@@ -2221,7 +2216,7 @@ RelevantItems = ['Bow',
                  'Hammer',
                  'Hookshot',
                  'Magic Mirror',
-                 'Ocarina',
+                 'Flute',
                  'Pegasus Boots',
                  'Power Glove',
                  'Cape',
@@ -2300,6 +2295,6 @@ BigKeys = ['Big Key (Eastern Palace)',
 
 hash_alphabet = [
     "Bow", "Boomerang", "Hookshot", "Bomb", "Mushroom", "Powder", "Rod", "Pendant", "Bombos", "Ether", "Quake",
-    "Lamp", "Hammer", "Shovel", "Ocarina", "Bug Net", "Book", "Bottle", "Potion", "Cane", "Cape", "Mirror", "Boots",
+    "Lamp", "Hammer", "Shovel", "Flute", "Bug Net", "Book", "Bottle", "Potion", "Cane", "Cape", "Mirror", "Boots",
     "Gloves", "Flippers", "Pearl", "Shield", "Tunic", "Heart", "Map", "Compass", "Key"
 ]
