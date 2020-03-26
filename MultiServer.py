@@ -86,9 +86,9 @@ class Context:
         logging.info(f'Loaded save file with {sum([len(p) for p in received_items.values()])} received items '
                      f'for {len(received_items)} players')
 
-    def on_item_found(self, find_player, owning_player, item, location):
+    def on_item_found(self, find_player, find_player_id, owning_player, owning_player_id, item, location_id, location):
         if self.item_found_cb:
-            self.item_found_cb(self, find_player, owning_player, item, location)
+            self.item_found_cb(self, find_player, find_player_id, owning_player, owning_player_id, item, location_id, location)
 
 
 async def send_msgs(websocket, msgs):
@@ -263,7 +263,7 @@ def register_location_checks(ctx: Context, team: int, slot: int, locations):
                     logging.info('(Team #%d) %s sent %s to %s (%s)' % (team+1, ctx.player_names[(team, slot)], get_item_name_from_id(target_item), ctx.player_names[(team, target_player)], get_location_name_from_address(location)))
                     found_items = True
 
-            ctx.on_item_found(ctx.player_names[(team, slot)], ctx.player_names[(team, target_player)], get_item_name_from_id(target_item), location)
+            ctx.on_item_found(ctx.player_names[(team, slot)], (team, slot), ctx.player_names[(team, target_player)], (team, target_player), get_item_name_from_id(target_item), location, get_location_name_from_address(location))
             
     send_new_items(ctx)
 
