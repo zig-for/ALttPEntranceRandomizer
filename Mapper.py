@@ -3,18 +3,8 @@ from collections import defaultdict, deque
 from graphviz import Digraph, Graph
 from DungeonGenerator import convert_regions
 from BaseClasses import RegionType, Door, DoorType, Direction, Sector, CrystalBarrier, Direction, Region
-from DoorShuffle import interior_doors, logical_connections, dungeon_warps
-def t():
-    dot = Digraph(comment='The Round Table')
-
-    dot.node('A', 'King Arthur')
-    dot.node('B', 'Sir Bedevere the Wise')
-    dot.node('L', 'Sir Lancelot the Brave')
-
-    dot.edges(['AB', 'AL'])
-    dot.edge('B', 'L', constraint='false')
-    print(dot.source)
-    dot.render('test-output/round-table.gv', view=True)
+from DoorShuffle import interior_doors, logical_connections, dungeon_warps, switch_dir_safe
+from MapData import region_to_rooms, make_room
 
 
 def get_door_port(region, door, is_lead):
@@ -50,7 +40,7 @@ def get_door_port(region, door, is_lead):
     return d
 
 
-def generate_connection(graph, region, connect, door_a, door_b):
+def generate_connection(region_to_horiz_region, graph, region, connect, door_a, door_b):
     arrow_dir = 'forward'
     if type(door_b) == Door:
         if not door_b.blocked and not door_a.blocked:
@@ -60,8 +50,10 @@ def generate_connection(graph, region, connect, door_a, door_b):
     else:
         #print(f"Warning {door_b} is not a door")
         pass
-    name_a = region.name + get_door_port(region, door_a, True)
-    name_b = connect.name + get_door_port(connect, door_b, False)
+    
+
+    name_a = region_to_horiz_region[region][0].name + get_door_port(region, door_a, True)
+    name_b = region_to_horiz_region[connect][0].name + get_door_port(connect, door_b, False)
 
     constraint_types = [
         DoorType.Normal,
@@ -88,25 +80,29 @@ def generate_connection(graph, region, connect, door_a, door_b):
         graph.edge(name_a, name_b, dir=arrow_dir,constraint=constraint,splines=spline)
 cluster_index = 0
 
-def is_valid_map_exit(ext):
-    return ext.door and get_region(ext) and get_region(ext).type == RegionType.Dungeon
+def is_valid_map_exit(exit):
+    return exit.door and get_region(exit) and get_region(exit).type == RegionType.Dungeon
 
-def opposite_ew_dir(dir):
+def opposite_ew_dir(direction):
     if direction == Direction.East:
         return Direction.East
     elif direction == Direction.West:
         return Direction.West
     assert(False)
 
-def get_valid_single_dirs(region):
+def get_valid_single_dirs(region, noisy=False):
     num_exits_dir = {}
     found_exits_dir = {}
     for exit in region.exits:
         if not is_valid_map_exit(exit):
+            if noisy:
+                print("Skipped " + str(exit.door.name) + " not valid")
             continue
 
         # allowed to loop on self
         if get_region(exit) == region:
+            if noisy:
+                print("Skipped " + str(exit.door.name) + " self loop")
             continue
 
         direction = exit.door.direction
@@ -115,13 +111,51 @@ def get_valid_single_dirs(region):
 
         # allowed multiple arrows to the same place
         if direction not in found_exits_dir or found_exits_dir[direction] != get_region(exit):
+            if noisy:
+                print("Added " + str(exit.door.name) + " on " + str(direction))
             num_exits_dir.setdefault(direction, 0)
             num_exits_dir[direction] += 1
             #if num_exits_dir[direction] > 1:
             #    print("invalid dir!")
-            found_exits_dir[direction] = get_region(exit)
+            found_exits_dir.setdefault(direction, []).append(get_region(exit))
+        else:
+            print("Skipped " + str(exit.door.name) + " " + str(direction) + " " + str(found_exits_dir.get(direction)))
 
-    return set(d for d in num_exits_dir if num_exits_dir[d] == 1)
+
+    assert (num_exits_dir.get(Direction.West, 0) == len(found_exits_dir.get(Direction.West, [])))
+    assert (num_exits_dir.get(Direction.East, 0) == len(found_exits_dir.get(Direction.East, [])))
+
+    found_entrances_dir = {}
+
+    for entrance in region.entrances:
+        if is_valid_map_exit(entrance):
+            if entrance.parent_region != region:
+                direction = switch_dir_safe(entrance.door.direction)
+                if direction:
+                    found_entrances_dir.setdefault(direction, []).append(entrance.parent_region)
+
+    #return set(d for d in num_exits_dir if num_exits_dir[d] == 1)
+    # 
+
+    dirs = [Direction.West, Direction.East]
+
+    def ok(d):
+        if len(found_exits_dir.get(d, [])) > 1:
+            return False
+        if len(found_entrances_dir.get(d, [])) > 1:
+            return False
+
+        total = len(found_exits_dir.get(d, [])) + len(found_entrances_dir.get(d, []))
+        if total == 0:
+            return False
+        if total == 1:
+            return True
+        if total == 2:
+            return found_exits_dir[d][0] == found_entrances_dir[d][0]
+
+    return {
+                d:(found_exits_dir.get(d) or found_entrances_dir.get(d))[0] for d in dirs 
+                if ok(d)            }
 
 logical_regions = set()
 
@@ -142,8 +176,8 @@ def generate_logical_regions():
 
     # TODO: convert lists into logical name
 
-def get_region(ext):
-    return ext.connected_region
+def get_region(exit):
+    return exit.connected_region
 
 from copy import copy
 
@@ -163,22 +197,35 @@ def merge_regions(a, b):
                 if other_exit.connected_region == b:
                     other_exit.connected_region = a
         a.exits.append(exit)
+
     a.exits = [exit for exit in a.exits if exit.connected_region != b]
     a.exits = [exit for exit in a.exits if (exit.connected_region != a) or (exit.name not in logical_regions)]
     # clear the exits so we don't try to use them
     b.exits = []
 
-    # temp
-    if a.name[0] != '*':
-        a.name = '*' + a.name
                     
 
+# TODO: all of this is leaving a bunch of properties pointing to the real world. TAKE CARE.
+# doing this needs a LOT of memoization
+def copy_exit(exit, region):
+    out = copy(exit)
+    out.parent_region = region
+    #out.door = copy(exit.door)
+    return out
 
 def generate_shadow_region(region):
     shadow_region = Region(region.name, region.type, 'this is a bug - you are in the shadow realm', region.player)
-    shadow_region.exits = [copy(exit) for exit in region.exits if is_valid_map_exit(exit)]
+    shadow_region.exits = [copy_exit(exit, shadow_region) for exit in region.exits if is_valid_map_exit(exit)]
 
     return shadow_region
+
+def regenerate_entrances_from_exits(regions):
+    for region in regions:
+        region.entrances = []
+
+    for region in regions:
+        for exit in region.exits:
+            exit.connected_region.entrances.append(exit)
 
 def generate_shadow_dungeon(start_regions):
     reg_queue = deque(start_regions)
@@ -215,6 +262,8 @@ def generate_shadow_dungeon(start_regions):
         for exit in shadow_region.exits:
             exit.connected_region = region_to_shadow_region[exit.connected_region]
 
+    regenerate_entrances_from_exits(shadow_dungeon)
+
     return shadow_dungeon, shadow_start_regions
     # TODO: handle entrances
 
@@ -222,18 +271,168 @@ def generate_shadow_dungeon(start_regions):
 
 TABLE_START = "<<TABLE BORDER=\"0\" CELLBORDER=\"0\" CELLSPACING=\"0\" CELLPADDING=\"0\" >"
 ROW_START = "<TR>"
-CELL_FORMAT = "<TD{port}>{label}</TD>"
+CELL_FORMAT = "<TD{port}>{image}{label}</TD>"
 ROW_END = "</TR>"
 TABLE_END = "</TABLE>>"
 
-def make_cell(label="", port=""):
+def make_cell(label="", image='', port=""):
     if port:
-        port = " PORT=\"{}\"".format(port)
-    return CELL_FORMAT.format(label=label, port=port)
+        port = " HEIGHT=\"{}\" WIDTH=\"{}\" PORT=\"{}\"".format(100 if label else 0, 100 if label else 0, port)
+    if image:
+        image = f'<IMG SRC="{image}" />'
+    return CELL_FORMAT.format(label=label, port=port, image=image)#image if label else '')
 
 table_index = 0
 
+
+def get_room_image(region):
+    #return region_to_rooms.get(region.name, region_to_rooms[region.name[1:]])
+
+    #return region_to_rooms.get(region.name)
+    return merged_room_data.get(region.name)
+
+from collections import defaultdict
+
+def add_offset(p, o):
+    return (p[0] + o[0], p[1] + o[1])
+
+quad_to_offset = [
+    (0,0),
+    (1,0),
+    (0,1),
+    (1,1),
+]
+
+
+
+
+
+class RoomGrid():
+    def __init__(self):
+        #self.extents = [[0,0],[0,0]]
+        self.last_room = None
+        self.grid = {}#defaultdict(str)
+
+    def _extents_for_grid(self,grid):
+        if not grid:
+            return ((0,0),(0,0))
+        min_x = 1000
+        min_y = 1000
+        max_x = -1000
+        max_y = -1000
+        for x,y in grid:
+            min_x = min(x, min_x)
+            min_y = min(y, min_y)
+            max_x = max(x, max_x)
+            max_y = max(y, max_y)
+        return ((min_x, min_y), (max_x, max_y))
+
+    # this is a mess
+    def add_region(self, region):
+        supertile = get_room_image(region)
+        if not supertile:
+            return
+        
+        base_addr = (0,0)
+        # always add to upper right for now
+
+        if self.grid:
+            extents = self._extents_for_grid(self.grid)
+            base_addr = (extents[1][0] + 1, extents[0][1])
+        
+        
+
+        supertile_grid = supertile_to_grid(supertile)
+        print(region.name)
+        print(supertile_grid)
+        print(self.grid)
+        print(f'BA: {base_addr}')
+        for y in range(len(supertile_grid)):
+            row = supertile_grid[y]
+            for x in range(len(row)):
+                if row[x]:
+                    # don't allow overwrite
+                    assert not self.grid.get(add_offset(base_addr, (x, y)))
+
+                    self.grid[add_offset(base_addr, (x, y))] = row[x]
+
+
+            #addr = add_offset(addr, )
+
+
+# take the quadrants, if there's no 
+def supertile_to_grid(supertile):
+    return supertile
+    # this is crazy, we really just need to get the extents of the supertile, why did i write it this way??!
+    # TODO: let RoomData generate this
+    # TODO: didn't I do this already?!
+    grid = [[None, None], [None, None]]
+    print('grid')
+    for quad in supertile[1]:
+        offset = quad_to_offset[quad]
+        grid[offset[1]][offset[0]] = (supertile[0], quad)
+    print(grid)
+    if not grid[0][0] and not grid[1][0]:
+        print("remove col")
+        grid = [[grid[0][1]], [grid[1][1]]]
+        print(grid)
+    elif not grid[0][1] and not grid[1][1]:
+        print("remove col")
+        grid = [[grid[0][0]], [grid[1][0]]]
+        print(grid)
+    for y in range(0, 1):
+        row = grid[y]
+        if all(x is None for x in row):
+            print("remove row")
+            grid = [grid[1 - y]]
+            print(grid)
+            break
+
+    return grid
+    
+#    rooms = set()
+#    for exit in region.exits:
+#        if exit.door.roomIndex != -1:
+#            rooms.add((exit.door.roomIndex, exit.door.quadrant))
+
+#    return list(rooms)
+
+def get_y_size(room):
+    # TODO have to handle different doors _eventually_
+
+    #quads = [supertile[1] for supertile in room]
+
+    quads = supertile[1]
+
+    if 0 in quads and 2 in quads:
+        return 2
+    if 1 in quads and 3 in quads:
+        return 2
+
+    return 1
+
+def get_x_size(room):
+    quads = supertile[1]
+
+    if 0 in quads and 1 in quads:
+        return 2
+    if 2 in quads and 3 in quads:
+        return 2
+
+    return 1
+
+def construct_geometry_for_group(group):
+    # this is sort of overdone
+    RG = RoomGrid()
+
+    for region in group:
+        RG.add_region(region)
+
+    return RG
 def make_table_for_group(graph, group):
+    room_grid = construct_geometry_for_group(group)
+
+
     global table_index
     #dungeon_subgraph.node(region.name, shape='circle' if region in start_regions else 'box')
     # 
@@ -246,11 +445,36 @@ def make_table_for_group(graph, group):
     s += make_cell() 
     s += ROW_END
 
+
+    extents = room_grid._extents_for_grid(room_grid.grid)
+
+
+
+    for y in range(extents[0][1], extents[1][1]+1):
+
+        s += ROW_START
+        s += make_cell(port=group[0].name+'_w') 
+
+        for x in range(extents[0][0], extents[1][0]+1):
+            tile = room_grid.grid.get((x, y))
+
+            image=''
+            label = 'not found'
+            if tile:
+                image = f'room_images/{tile[0]}-{tile[1]}.png'
+                label = ''
+            s += make_cell(label, port=region.name, image =image)
+        s += make_cell(port=group[-1].name+'_e') 
+        s += ROW_END
+
     s += ROW_START
-    s += make_cell(port=group[0].name+'_w') 
+    s += make_cell() 
     for region in group:
-        s += make_cell(region.name, port=region.name)
-    s += make_cell(port=group[0].name+'_e') 
+        
+        image = ''
+        label = region.name 
+        s += make_cell(label, port=region.name, image =image)
+    s += make_cell() 
     s += ROW_END
 
     s += ROW_START
@@ -267,10 +491,15 @@ def make_table_for_group(graph, group):
     table_index += 1
 
 def add_region_group(graph, group):
-    for region in group:
-        make_table_for_group(graph, [region])
+    #for region in group:
+    #    make_table_for_group(graph, [region])
+    make_table_for_group(graph, group)
 
+# uuuugh globals. TODO: wrap html generation into class to allow passing context
+merged_room_data = {}
 def map(world):
+    global merged_room_data
+
     player = 1
 
     queue = deque(world.dungeon_layouts[player].values())
@@ -290,98 +519,273 @@ def map(world):
         shadow_dungeon, start_regions = generate_shadow_dungeon(start_regions)
 
         dead_regions = set()
+
+        def get_room_data(region):
+            if region in merged_room_data:
+                return merged_room_data[region]
+            return 
+
+        def supertile_for_room(room):
+            for row in room:
+                for tile in row:
+                    if tile:
+                        return tile[0]
+
+        def fixup_exit(region, merged_region):
+            # hackery because I didn't copy entrances TODO fix this
+
+            for region2 in shadow_dungeon:
+                for exit in region2.exits:
+                    #assert(exit.connected_region not in dead_regions)
+                    if exit.connected_region == merged_region:
+                        exit.connected_region = region
+
+        merged_room_data = copy(region_to_rooms)
+        for name in merged_room_data:
+            if not merged_room_data[name]:
+                merged_room_data[name] = [ [ [0,0] ] ]
+
+        supertile_to_region = {}
         for region in shadow_dungeon:
-            while True:
-                for exit in region.exits:
-                    if exit.name in logical_regions:
-                        if exit.connected_region != region:
-                            print(f"Merge {region.name} <- {exit.connected_region.name}")
-                            merge_regions(region, exit.connected_region)
-                            dead_regions.add(exit.connected_region)
-                            # restart the search, we got more exits
+            assert(region.name in merged_room_data)
+            room = merged_room_data[region.name]
+            if room:
+                supertile_to_region.setdefault(supertile_for_room(room), []).append((region, room))
+
+        def overlapping_rooms(a, b):
+            quad_a = []
+            print(a)
+            for row in a:
+                for p in row:
+                    if not p:
+                        continue
+                    i, q = p
+                    quad_a.append(q)
+
+            quad_b = []
+            for row in b:
+                for p in row:
+                    if not p:
+                        continue
+                    i, q = p
+                    quad_b.append(q)
+            for q in quad_a:
+                if q in quad_b:
+                    return True
+
+            return False
+
+        def merge_rooms(a, b):
+            quads = set()
+            for row in a:
+                for p in row:
+                    if not p:
+                        continue
+                    i, q = p
+                    quads.add(q)
+
+            
+            for row in b:
+                for p in row:
+                    if not p:
+                        continue
+                    i, q = p
+                    quads.add(q)
+            
+            return make_room(supertile_for_room(a), list(quads))
+
+        MERGE_BY_ROOM_DATA = True
+        if MERGE_BY_ROOM_DATA:
+            for supertile_key in supertile_to_region:
+                if supertile_key == 0:
+                    continue
+                supertile = supertile_to_region[supertile_key]
+                while True:
+                    merged_some_rooms = False
+                    for region, room in supertile:
+
+                        merged_some_rooms = False
+                        for other_region, other_room in supertile:
+                            if region == other_region:
+                                continue
+
+                            # TODO: check for logical connection + interior door here
+                            should_merge = overlapping_rooms(room, other_room)
+
+                            if not should_merge:
+                                for exit in region.exits:
+                                    if exit.name in logical_regions:
+                                        if exit.connected_region == other_region:
+                                            should_merge = True
+
+
+                            if should_merge:
+                                merge_regions(region, other_region)
+                                dead_regions.add(other_region)
+                                fixup_exit(region, other_region)
+                                print(f'merging {region.name} + {other_region.name}')
+                                print(f'merging {room} + {other_room}')
+                                new_room = merge_rooms(room, other_room)
+                                print(new_room)
+                                merged_room_data[region.name] = new_room
+                                supertile = [p for p in supertile if p[0] != other_region and p[0] != region] + [(region, new_room)]
+                                merged_some_rooms = True
+                                break
+                            else:
+                                print(f'not merging {region.name} + {other_region.name}')
+                                print(f'not merging {room} + {other_room}')
+
+                        if merged_some_rooms:
                             break
-                else:
-                    # we didn't hit any logical reasons, now we can stop
-                    break
+                    if not merged_some_rooms:
+                        break
+
+        #while True:
+        #    did_logical_merge
+        # uuuuugh
+        regenerate_entrances_from_exits(shadow_dungeon)
+
+
+        MERGE_LOGICAL_REGIONS = False
+        if MERGE_LOGICAL_REGIONS:
+            for region in shadow_dungeon:
+                if region in dead_regions:
+                    continue
+                while True:
+                    for exit in region.exits:
+                        if exit.name in logical_regions:
+                            if exit.connected_region != region:
+                                print(f"Merge {region.name} <- {exit.connected_region.name}")
+                                merge_regions(region, exit.connected_region)
+                                dead_regions.add(exit.connected_region)
+                                fixup_exit(region, exit.connected_region)
+                                
+                                # restart the search, we got more exits
+                                break
+                    else:
+                        # we didn't hit any logical reasons, now we can stop
+                        break
 
         shadow_dungeon = [region for region in shadow_dungeon if region not in dead_regions]
+
+
         # TODO  outputorder=nodesfirst
         future_connections = {}
 
 
+
         with graph.subgraph(name='cluster_'+str(builder)) as dungeon_subgraph:
 
-
+            # todo: just rewrite all this crap
             horiz_regions = []
             region_to_horiz_region = {}
-            for region in shadow_dungeon:
+
+            walked_regions = set()
+
+            def new_horiz_region(region):
+                horiz_regions.append([region])
+                region_to_horiz_region[region] = horiz_regions[-1]
+
+            # Once we are more knowledgable about door locations and dungeon shapes we can use a fitting algo to allow for N/S stuff too
+            def process_region(region, cur_list=[]):
+                if region in walked_regions:
+                    return cur_list
+                print("walking to " + region.name)
+                walked_regions.add(region)
+
+                valid_single_dirs = get_valid_single_dirs(region, True)
 
 
-                prospective_horiz_regions = []
-
-                valid_single_dirs = get_valid_single_dirs(region)
-
-
-                for ext in region.exits:
-                    if not is_valid_map_exit(ext):
-                        continue
-                    door_a = ext.door
+                if Direction.West in valid_single_dirs and valid_single_dirs[Direction.West] not in cur_list:
+                    west_region = valid_single_dirs[Direction.West]
                     
-                    connect = get_region(ext)
+                    cur_list = process_region(west_region, cur_list + [region])
+
+                    valid_single_dirs_for_west = get_valid_single_dirs(west_region)
+      
+
+                    if valid_single_dirs_for_west.get(Direction.East) == region:
+                        # TODO: this can fail...how?!
+                        print("link " + region.name + " is east of " + west_region.name) 
+                        h_region = region_to_horiz_region[west_region]
+
+                        h_region.append(region)
+                        region_to_horiz_region[region] = h_region
+                    else:
+                        foobar = valid_single_dirs_for_west.get(Direction.East)
+                        if foobar:
+                            print("Pointed to " + foobar.name)
+                        else:
+                            print("Pointed to none")
+
+                        # Our valid west region has a oneway to somewhere else, make a new region
+                        new_horiz_region(region)    
+                else:
+                    # we are by definition the westmost region, start a new horiz region
+                    new_horiz_region(region)
+
+                # attempt to walk east...this doesn't work well
+                # really we need to split exit processing and combining ffs
+                assert valid_single_dirs is not None
+                if Direction.East in valid_single_dirs and valid_single_dirs[Direction.East] not in cur_list:
+                    
+                    
+                    process_region(valid_single_dirs[Direction.East], cur_list)
+
+                for exit in region.exits:
+                    if not is_valid_map_exit(exit):
+                        continue
+                    door_a = exit.door
+                    
+                    connect = get_region(exit)
                
                     door_b = door_a.dest
                     assert(door_b)
                     if door_a not in done:
                         done.add(door_a)
-                        
+                        # TODO: this is really dumb - we should just check if we are walking through a link that's in our horiz region :(
                         if (door_a.direction == Direction.West or door_a.direction == Direction.East) and door_a.direction in valid_single_dirs:
-                            if connect in region_to_horiz_region:
-                                subregion = region_to_horiz_region[connect]
-                                if subregion not in prospective_horiz_regions:
-                                    prospective_horiz_regions.append(subregion)
-                            if door_b not in done:
+
+                            if get_valid_single_dirs(valid_single_dirs[door_a.direction]).get(opposite_ew_dir(door_a.direction), None) == region:
+                                pass
+                            elif door_b not in done:
                                 future_connections.setdefault(region, []).append((region, connect, door_a, door_b))
-                                #print('added future connection' + str(region.name))
+                                pass
                         else:
                             if door_b not in done:
-                                generate_connection(dungeon_subgraph, region, connect, door_a, door_b)
-                        
-         
-                        
-                prospective_horiz_regions = list(prospective_horiz_regions)
-                # This door didn't find any other already linked east or west locations
-                # Let's be the first
-                if not prospective_horiz_regions:
-                    region_to_horiz_region[region] = [region]
-                    horiz_regions.append(region_to_horiz_region[region])
-                else:
-                    while len(prospective_horiz_regions) > 1:
-                        print("Reducing subregions to " + str( len(prospective_horiz_regions) ))
-                        for moving_region in prospective_horiz_regions[-1]:
-                            print(f"move {moving_region}")
-                            print(len(prospective_horiz_regions[-1]))
-                            print(len(prospective_horiz_regions[0]))
-                            prospective_horiz_regions[0].append(moving_region)
-                            region_to_horiz_region[moving_region] = prospective_horiz_regions[0]
-                        horiz_regions.remove(prospective_horiz_regions[-1])
-                        prospective_horiz_regions = prospective_horiz_regions[:-1]
-                    prospective_horiz_regions[0].append(region)
-                    region_to_horiz_region[region] = prospective_horiz_regions[0]
-            print(len(future_connections))
-            for horiz_region in horiz_regions:
-                global cluster_index
-                with dungeon_subgraph.subgraph(name='cluster_'+str(cluster_index)) as cluster:
-                    #cluster.attr(style='invis')
-                    cluster_index += 1
-                    with cluster.subgraph() as subregion:
-                        subregion.attr(rank='same')
+                                #generate_connection(dungeon_subgraph, region, connect, door_a, door_b)
+                                future_connections.setdefault(region, []).append((region, connect, door_a, door_b))
 
-                        for region in horiz_region:
+                return cur_list
+            for region in shadow_dungeon:
+
+
+                process_region(region)
+
+            print(len(future_connections))
+            # for horiz_region in horiz_regions:
+            #     global cluster_index
+            #     with dungeon_subgraph.subgraph(name='cluster_'+str(cluster_index)) as cluster:
+            #         #cluster.attr(style='invis')
+            #         cluster_index += 1
+            #         with cluster.subgraph() as subregion:
+            #             subregion.attr(rank='same')
+
+            #             for region in horiz_region:
                        
-                            for c in future_connections.get(region, []):
-                                generate_connection(subregion, c[0], c[1], c[2], c[3])
+            #                 for c in future_connections.get(region, []):
+            #                     generate_connection(subregion, c[0], c[1], c[2], c[3])
+
+
+
             for horiz_region in horiz_regions:
+
                 add_region_group(dungeon_subgraph, horiz_region)
+
+            for horiz_region in horiz_regions:
+                for region in horiz_region:
+                    for c in future_connections.get(region, []):
+                        generate_connection(region_to_horiz_region, dungeon_subgraph, c[0], c[1], c[2], c[3])
                         
     graph.render('test-output/map.gv', view=True) 
     
