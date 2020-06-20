@@ -6,6 +6,24 @@ from BaseClasses import RegionType, Door, DoorType, Direction, Sector, CrystalBa
 from DoorShuffle import interior_doors, logical_connections, dungeon_warps, switch_dir_safe
 from MapData import region_to_rooms, make_room
 
+from decimal import Decimal
+
+DHalf = Decimal('0.5')
+DZero = Decimal(0)
+def drange(start, stop, step):
+    assert(type(start) != float)
+    assert(type(stop) != float)
+    assert(type(step) != float)
+    start = Decimal(start)
+    stop = Decimal(stop)
+
+    step = Decimal(step)
+    r = start
+    while r < stop:
+        yield r
+        r += step
+
+
 
 def get_door_port(region, door, is_lead):
     def f(door, is_lead):
@@ -282,7 +300,6 @@ def make_cell(label="", image='', port=""):
         image = f'<IMG SRC="{image}" />'
     return CELL_FORMAT.format(label=label, port=port, image=image)#image if label else '')
 
-table_index = 0
 
 
 def get_room_image(region):
@@ -304,8 +321,9 @@ quad_to_offset = [
 ]
 
 
+OccupiedTile = object()
 
-
+# TODO: make coordinate object to not have to deal with 5s and 10s
 
 class RoomGrid():
     def __init__(self):
@@ -315,11 +333,11 @@ class RoomGrid():
 
     def _extents_for_grid(self,grid):
         if not grid:
-            return ((0,0),(0,0))
-        min_x = 1000
-        min_y = 1000
-        max_x = -1000
-        max_y = -1000
+            return ((DZero,DZero),(DZero,DZero))
+        min_x = Decimal(1000)
+        min_y = Decimal(1000)
+        max_x = Decimal(-1000)
+        max_y = Decimal(-1000)
         for x,y in grid:
             min_x = min(x, min_x)
             min_y = min(y, min_y)
@@ -333,12 +351,12 @@ class RoomGrid():
         if not supertile:
             return
         
-        base_addr = (0,0)
+        base_addr = (Decimal(0),Decimal(0))
         # always add to upper right for now
 
         if self.grid:
             extents = self._extents_for_grid(self.grid)
-            base_addr = (extents[1][0] + 1, extents[0][1])
+            base_addr = (extents[1][0] + 1, extents[0][1]+DHalf)
         
         
 
@@ -348,47 +366,29 @@ class RoomGrid():
         print(self.grid)
         print(f'BA: {base_addr}')
         for y in range(len(supertile_grid)):
+            
             row = supertile_grid[y]
             for x in range(len(row)):
+            
                 if row[x]:
                     # don't allow overwrite
-                    assert not self.grid.get(add_offset(base_addr, (x, y)))
+                    addr = add_offset(base_addr, (x, y))
 
-                    self.grid[add_offset(base_addr, (x, y))] = row[x]
+                    assert not self.grid.get(addr)
+
+                    self.grid[addr] = row[x] + [region]
+                    self.grid[add_offset(addr,(DHalf,0))] = OccupiedTile
+                    self.grid[add_offset(addr,(0,DHalf))] = OccupiedTile
+                    self.grid[add_offset(addr,(DHalf,DHalf))] = OccupiedTile
+                    
 
 
             #addr = add_offset(addr, )
 
 
-# take the quadrants, if there's no 
 def supertile_to_grid(supertile):
     return supertile
-    # this is crazy, we really just need to get the extents of the supertile, why did i write it this way??!
-    # TODO: let RoomData generate this
-    # TODO: didn't I do this already?!
-    grid = [[None, None], [None, None]]
-    print('grid')
-    for quad in supertile[1]:
-        offset = quad_to_offset[quad]
-        grid[offset[1]][offset[0]] = (supertile[0], quad)
-    print(grid)
-    if not grid[0][0] and not grid[1][0]:
-        print("remove col")
-        grid = [[grid[0][1]], [grid[1][1]]]
-        print(grid)
-    elif not grid[0][1] and not grid[1][1]:
-        print("remove col")
-        grid = [[grid[0][0]], [grid[1][0]]]
-        print(grid)
-    for y in range(0, 1):
-        row = grid[y]
-        if all(x is None for x in row):
-            print("remove row")
-            grid = [grid[1 - y]]
-            print(grid)
-            break
 
-    return grid
     
 #    rooms = set()
 #    for exit in region.exits:
@@ -432,63 +432,117 @@ def construct_geometry_for_group(group):
 def make_table_for_group(graph, group):
     room_grid = construct_geometry_for_group(group)
 
+    empty_cell = make_cell()
+    empty_tile = empty_cell * 3
 
-    global table_index
+    
     #dungeon_subgraph.node(region.name, shape='circle' if region in start_regions else 'box')
     # 
+
+
+
+    # TODO: fix this shit
+    # each tile needs to have an nsew
+    # so each row needs to be repeated
     s = TABLE_START
-
-    s += ROW_START
-    s += make_cell() 
-    for region in group:
-        s += make_cell(port=region.name+'_n')
-    s += make_cell() 
-    s += ROW_END
-
 
     extents = room_grid._extents_for_grid(room_grid.grid)
 
+    # for each row
+    for y in drange(extents[0][1], extents[1][1], DHalf):
+        top_row = ROW_START
+        inner_row = ROW_START
+        bottom_row = ROW_START
+        
+        #s += make_cell(port=group[0].name+'_w') 
 
-
-    for y in range(extents[0][1], extents[1][1]+1):
-
-        s += ROW_START
-        s += make_cell(port=group[0].name+'_w') 
-
-        for x in range(extents[0][0], extents[1][0]+1):
+        # for each tile within row
+        for x in drange(extents[0][0], extents[1][0], DHalf):
             tile = room_grid.grid.get((x, y))
+            if not tile or tile == OccupiedTile:
+                top_row += empty_tile
+                inner_row += empty_tile
+                bottom_row += empty_tile
+                continue
+            image = f'room_images/{tile[0]}-{tile[1]}.png'
+                    
+            top_row += empty_cell
+            inner_row += make_cell(label='', port=tile[2].name, image=image)
+            bottom_row += empty_cell
+        #s += make_cell(port=group[-1].name+'_e') 
 
-            image=''
-            label = 'not found'
-            if tile:
-                image = f'room_images/{tile[0]}-{tile[1]}.png'
-                label = ''
-            s += make_cell(label, port=region.name, image =image)
-        s += make_cell(port=group[-1].name+'_e') 
+        s += top_row
+        s += ROW_END
+        s += inner_row
+        s += ROW_END
+        s += bottom_row
         s += ROW_END
 
-    s += ROW_START
-    s += make_cell() 
-    for region in group:
-        
-        image = ''
-        label = region.name 
-        s += make_cell(label, port=region.name, image =image)
-    s += make_cell() 
-    s += ROW_END
-
-    s += ROW_START
-    s += make_cell() 
-    for region in group:
-        s += make_cell(port=region.name+'_s')
-    s += make_cell() 
-    s += ROW_END
-
     s += TABLE_END
+    if False:
+
+        s += ROW_START
+        s += make_cell() 
+        for region in group:
+            s += make_cell(port=region.name+'_n')
+        s += make_cell() 
+        s += ROW_END
+
+
+        extents = room_grid._extents_for_grid(room_grid.grid)
+
+
+        # TODO: fix this shit
+        # each tile needs to have an nsew
+        # so each row needs to be repeated
+        for y in drange(extents[0][1], extents[1][1], DHalf):
+
+            s += ROW_START
+            s += make_cell(port=group[0].name+'_w') 
+
+            for x in drange(extents[0][0], extents[1][0], DHalf):
+                tile = room_grid.grid.get((x, y))
+                if not tile or tile == OccupiedTile:
+                    s += make_cell()
+                    continue
+                        
+
+                image=''
+                label = 'not found'
+                if tile:
+                    image = f'room_images/{tile[0]}-{tile[1]}.png'
+                    label = ''
+                s += make_cell(label, port=region.name, image =image)
+            s += make_cell(port=group[-1].name+'_e') 
+            s += ROW_END
+
+        s += ROW_START
+        s += make_cell() 
+        for region in group:
+            s += make_cell(port=region.name+'_s')
+        s += make_cell() 
+        s += ROW_END
+
+
+        s += ROW_START
+        for region in group:
+            
+            image = ''
+            label = region.name 
+            s += make_cell() 
+
+            s += make_cell(label)
+            s += make_cell() 
+
+            s += make_cell() 
+        s += make_cell() 
+        s += ROW_END
+
+
 
 #    graph.node(s, shape='circle' if group[0] in start_regions else 'box')
     graph.node(group[0].name,label=s, shape='box')
-    table_index += 1
+    
 
 def add_region_group(graph, group):
     #for region in group:

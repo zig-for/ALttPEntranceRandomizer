@@ -388,7 +388,7 @@ region_to_rooms = {
 'Mire Spikes':make_room(179, [2]),
 'Mire Ledgehop':make_room(179, [0]),
 'Mire Bent Bridge':make_room(163, left_side),
-'Mire Over Bridge':make_room(163, all_quadrants),
+'Mire Over Bridge':make_room(162, all_quadrants),
 'Mire Right Bridge':make_room(163, right_side),
 'Mire Left Bridge':make_room(163, all_quadrants),
 'Mire Fishbone':make_room(161, [0,1,3]),
