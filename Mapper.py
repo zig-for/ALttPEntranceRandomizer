@@ -10,6 +10,7 @@ from decimal import Decimal
 
 DHalf = Decimal('0.5')
 DZero = Decimal(0)
+
 def drange(start, stop, step):
     assert(type(start) != float)
     assert(type(stop) != float)
@@ -96,7 +97,6 @@ def generate_connection(region_to_horiz_region, graph, region, connect, door_a, 
         graph.edge(name_b, name_a, dir=arrow_dir,constraint=constraint, splines=spline)
     else:
         graph.edge(name_a, name_b, dir=arrow_dir,constraint=constraint,splines=spline)
-cluster_index = 0
 
 def is_valid_map_exit(exit):
     return exit.door and get_region(exit) and get_region(exit).type == RegionType.Dungeon
@@ -108,9 +108,19 @@ def opposite_ew_dir(direction):
         return Direction.West
     assert(False)
 
-def get_valid_single_dirs(region, noisy=False):
+# I have....regrets
+def get_valid_single_dirs(region):
+    dirs, exits = get_valid_single_dirs_inner(region)
+    return dirs
+
+def get_valid_single_exits(region):
+    dirs, exits = get_valid_single_dirs_inner(region)
+    return exits
+
+def get_valid_single_dirs_inner(region, noisy=False):
     num_exits_dir = {}
     found_exits_dir = {}
+    exits_for_dir = {}
     for exit in region.exits:
         if not is_valid_map_exit(exit):
             if noisy:
@@ -128,6 +138,7 @@ def get_valid_single_dirs(region, noisy=False):
         #defaultdict
 
         # allowed multiple arrows to the same place
+        # TODO: maybe shouldn't allow multiple exits to same place
         if direction not in found_exits_dir or found_exits_dir[direction] != get_region(exit):
             if noisy:
                 print("Added " + str(exit.door.name) + " on " + str(direction))
@@ -136,6 +147,7 @@ def get_valid_single_dirs(region, noisy=False):
             #if num_exits_dir[direction] > 1:
             #    print("invalid dir!")
             found_exits_dir.setdefault(direction, []).append(get_region(exit))
+            exits_for_dir[direction] = exit
         else:
             print("Skipped " + str(exit.door.name) + " " + str(direction) + " " + str(found_exits_dir.get(direction)))
 
@@ -151,10 +163,7 @@ def get_valid_single_dirs(region, noisy=False):
                 direction = switch_dir_safe(entrance.door.direction)
                 if direction:
                     found_entrances_dir.setdefault(direction, []).append(entrance.parent_region)
-
-    #return set(d for d in num_exits_dir if num_exits_dir[d] == 1)
-    # 
-
+                    exits_for_dir[direction] = entrance
     dirs = [Direction.West, Direction.East]
 
     def ok(d):
@@ -171,9 +180,9 @@ def get_valid_single_dirs(region, noisy=False):
         if total == 2:
             return found_exits_dir[d][0] == found_entrances_dir[d][0]
 
-    return {
-                d:(found_exits_dir.get(d) or found_entrances_dir.get(d))[0] for d in dirs 
-                if ok(d)            }
+    r = {d:(found_exits_dir.get(d) or found_entrances_dir.get(d))[0] for d in dirs if ok(d)}
+
+    return r, {d:exits_for_dir[d] for d in r}
 
 logical_regions = set()
 
@@ -293,19 +302,15 @@ CELL_FORMAT = "<TD{port}>{image}{label}</TD>"
 ROW_END = "</TR>"
 TABLE_END = "</TABLE>>"
 
-def make_cell(label="", image='', port=""):
+def make_cell(label="", image='', port="", colspan=1, rowspan=1, imagesize=100):
+    # TODO: figure out how the fuck image sizing works
     if port:
-        port = " HEIGHT=\"{}\" WIDTH=\"{}\" PORT=\"{}\"".format(100 if label else 0, 100 if label else 0, port)
+        port = ' PORT="{}" COLSPAN="{}" ROWSPAN="{}" '.format(port, colspan, rowspan)
     if image:
         image = f'<IMG SRC="{image}" />'
     return CELL_FORMAT.format(label=label, port=port, image=image)#image if label else '')
 
-
-
 def get_room_image(region):
-    #return region_to_rooms.get(region.name, region_to_rooms[region.name[1:]])
-
-    #return region_to_rooms.get(region.name)
     return merged_room_data.get(region.name)
 
 from collections import defaultdict
@@ -320,8 +325,11 @@ quad_to_offset = [
     (1,1),
 ]
 
+OccupiedTileBottom = object()
+OccupiedTileRight = object()
+OccupiedTileBottomRight = object()
 
-OccupiedTile = object()
+Occupied = [OccupiedTileBottom, OccupiedTileRight, OccupiedTileBottomRight]
 
 # TODO: make coordinate object to not have to deal with 5s and 10s
 
@@ -330,7 +338,7 @@ class RoomGrid():
         #self.extents = [[0,0],[0,0]]
         self.last_room = None
         self.grid = {}#defaultdict(str)
-
+        self.last_supertile_height = Decimal(0)
     def _extents_for_grid(self,grid):
         if not grid:
             return ((DZero,DZero),(DZero,DZero))
@@ -346,28 +354,35 @@ class RoomGrid():
         return ((min_x, min_y), (max_x, max_y))
 
     # this is a mess
-    def add_region(self, region):
+    def add_region(self, region, y_offset=0):
         supertile = get_room_image(region)
         if not supertile:
             return
         
+        # todo: grab the last supertile instead of simply caching height
         base_addr = (Decimal(0),Decimal(0))
         # always add to upper right for now
 
+
+        for x in range(len(supertile[0])):
+            if supertile[0][x]:
+                y_offset += supertile[0][x][1] // 2
+                break
+        else:
+            assert(False)
+
+
         if self.grid:
             extents = self._extents_for_grid(self.grid)
-            base_addr = (extents[1][0] + 1, extents[0][1]+DHalf)
-        
-        
+            base_addr = (extents[1][0] + DHalf, self.last_supertile_height+y_offset)
 
-        supertile_grid = supertile_to_grid(supertile)
-        print(region.name)
-        print(supertile_grid)
-        print(self.grid)
-        print(f'BA: {base_addr}')
-        for y in range(len(supertile_grid)):
+        #print(region.name)
+        #print(supertile)
+        #print(self.grid)
+        #print(f'BA: {base_addr}')
+        for y in range(len(supertile)):
             
-            row = supertile_grid[y]
+            row = supertile[y]
             for x in range(len(row)):
             
                 if row[x]:
@@ -377,51 +392,29 @@ class RoomGrid():
                     assert not self.grid.get(addr)
 
                     self.grid[addr] = row[x] + [region]
-                    self.grid[add_offset(addr,(DHalf,0))] = OccupiedTile
-                    self.grid[add_offset(addr,(0,DHalf))] = OccupiedTile
-                    self.grid[add_offset(addr,(DHalf,DHalf))] = OccupiedTile
-                    
+                    self.grid[add_offset(addr,(DHalf,0))] = OccupiedTileRight
+                    self.grid[add_offset(addr,(0,DHalf))] = OccupiedTileBottom
+                    self.grid[add_offset(addr,(DHalf,DHalf))] = OccupiedTileBottomRight
+        
+        for x in range(len(supertile[0])):
+            if supertile[0][x]:
+                if supertile[0][x][1] // 2 == 1:
+                    self.last_supertile_height = base_addr[1] - 1
+                    break
+                else:
+                    self.last_supertile_height = base_addr[1]
+                    break
+        else:
+            assert(False)
 
-
-            #addr = add_offset(addr, )
 
 
 def supertile_to_grid(supertile):
     return supertile
 
-    
-#    rooms = set()
-#    for exit in region.exits:
-#        if exit.door.roomIndex != -1:
-#            rooms.add((exit.door.roomIndex, exit.door.quadrant))
-
-#    return list(rooms)
-
-def get_y_size(room):
-    # TODO have to handle different doors _eventually_
-
-    #quads = [supertile[1] for supertile in room]
-
-    quads = supertile[1]
-
-    if 0 in quads and 2 in quads:
-        return 2
-    if 1 in quads and 3 in quads:
-        return 2
-
-    return 1
-
-def get_x_size(room):
-    quads = supertile[1]
-
-    if 0 in quads and 1 in quads:
-        return 2
-    if 2 in quads and 3 in quads:
-        return 2
-
-    return 1
 
 def construct_geometry_for_group(group):
+    return room_group_to_grid[group[0].name]
     # this is sort of overdone
     RG = RoomGrid()
 
@@ -429,17 +422,17 @@ def construct_geometry_for_group(group):
         RG.add_region(region)
 
     return RG
+
+def make_cell_debug(l):
+    if False:
+        return make_cell(label=l)
+    else:
+        return make_cell()
+
 def make_table_for_group(graph, group):
     room_grid = construct_geometry_for_group(group)
 
     empty_cell = make_cell()
-    empty_tile = empty_cell * 3
-
-    
-    #dungeon_subgraph.node(region.name, shape='circle' if region in start_regions else 'box')
-    # 
-
-
 
     # TODO: fix this shit
     # each tile needs to have an nsew
@@ -449,99 +442,47 @@ def make_table_for_group(graph, group):
     extents = room_grid._extents_for_grid(room_grid.grid)
 
     # for each row
-    for y in drange(extents[0][1], extents[1][1], DHalf):
-        top_row = ROW_START
-        inner_row = ROW_START
-        bottom_row = ROW_START
+    for y in drange(extents[0][1], extents[1][1] + DHalf, DHalf):
+        #always lead with empty cell so that the row isnt empty
+        top_row = ROW_START + empty_cell
+        inner_row = ROW_START + empty_cell
+        bottom_row = ROW_START + empty_cell
         
         #s += make_cell(port=group[0].name+'_w') 
 
         # for each tile within row
-        for x in drange(extents[0][0], extents[1][0], DHalf):
+        for x in drange(extents[0][0], extents[1][0] + DHalf, DHalf):
             tile = room_grid.grid.get((x, y))
-            if not tile or tile == OccupiedTile:
-                top_row += empty_tile
-                inner_row += empty_tile
-                bottom_row += empty_tile
+            if tile in Occupied:
+                inner_row += make_cell(colspan=1)
+                if tile == OccupiedTileRight:
+                    #top_row += empty_cell * 3
+                    top_row += make_cell_debug('Occupied_R_TL') + make_cell(rowspan=1) + make_cell_debug('Occupied_R_TR')
+                    bottom_row += make_cell_debug('Occupied_R_B')
+                else:
+                    top_row += make_cell_debug('Occupied_R_T')
+                    bottom_row += make_cell_debug('Occupied_R_BL') + make_cell(rowspan=1) + make_cell_debug('Occupied_R_BR')
+                continue
+            if not tile:
+                top_row += make_cell_debug('E') + make_cell_debug('E') + make_cell_debug('E')
+                inner_row += make_cell_debug('E') + make_cell(image='room_images/empty-tile.png') + make_cell_debug('E')
+                #inner_row += make_cell_debug('E') + make_cell(label='e') + make_cell_debug('E')
+                #inner_row += make_cell_debug('E') + make_cell_debug('E') + make_cell_debug('E')
+                bottom_row += make_cell_debug('E') + make_cell_debug('E') + make_cell_debug('E')
                 continue
             image = f'room_images/{tile[0]}-{tile[1]}.png'
-                    
-            top_row += empty_cell
-            inner_row += make_cell(label='', port=tile[2].name, image=image)
+
+            top_row += make_cell_debug('TR') * 3
+            inner_row += empty_cell + make_cell(label='', port=tile[2].name, image=image, colspan=4, rowspan=4)
             bottom_row += empty_cell
-        #s += make_cell(port=group[-1].name+'_e') 
 
-        s += top_row
-        s += ROW_END
-        s += inner_row
-        s += ROW_END
-        s += bottom_row
-        s += ROW_END
-
+        s += top_row + ROW_END
+        s += inner_row + ROW_END
+        s += bottom_row + ROW_END
+    
     s += TABLE_END
-    if False:
-
-        s += ROW_START
-        s += make_cell() 
-        for region in group:
-            s += make_cell(port=region.name+'_n')
-        s += make_cell() 
-        s += ROW_END
-
-
-        extents = room_grid._extents_for_grid(room_grid.grid)
-
-
-        # TODO: fix this shit
-        # each tile needs to have an nsew
-        # so each row needs to be repeated
-        for y in drange(extents[0][1], extents[1][1], DHalf):
-
-            s += ROW_START
-            s += make_cell(port=group[0].name+'_w') 
-
-            for x in drange(extents[0][0], extents[1][0], DHalf):
-                tile = room_grid.grid.get((x, y))
-                if not tile or tile == OccupiedTile:
-                    s += make_cell()
-                    continue
-                        
-
-                image=''
-                label = 'not found'
-                if tile:
-                    image = f'room_images/{tile[0]}-{tile[1]}.png'
-                    label = ''
-                s += make_cell(label, port=region.name, image =image)
-            s += make_cell(port=group[-1].name+'_e') 
-            s += ROW_END
-
-        s += ROW_START
-        s += make_cell() 
-        for region in group:
-            s += make_cell(port=region.name+'_s')
-        s += make_cell() 
-        s += ROW_END
-
-
-        s += ROW_START
-        for region in group:
-            
-            image = ''
-            label = region.name 
-            s += make_cell() 
-
-            s += make_cell(label)
-            s += make_cell() 
-
-            s += make_cell() 
-        s += make_cell() 
-        s += ROW_END
-
-
-
-#    graph.node(s, shape='circle' if group[0] in start_regions else 'box')
-    graph.node(group[0].name,label=s, shape='box')
+    
+    graph.node(group[0].name,label=s, shape='plain')
     
 
 def add_region_group(graph, group):
@@ -551,6 +492,9 @@ def add_region_group(graph, group):
 
 # uuuugh globals. TODO: wrap html generation into class to allow passing context
 merged_room_data = {}
+
+room_group_to_grid = {}
+
 def map(world):
     global merged_room_data
 
@@ -608,7 +552,6 @@ def map(world):
 
         def overlapping_rooms(a, b):
             quad_a = []
-            print(a)
             for row in a:
                 for p in row:
                     if not p:
@@ -654,6 +597,7 @@ def map(world):
                 if supertile_key == 0:
                     continue
                 supertile = supertile_to_region[supertile_key]
+
                 while True:
                     merged_some_rooms = False
                     for region, room in supertile:
@@ -739,16 +683,20 @@ def map(world):
             def new_horiz_region(region):
                 horiz_regions.append([region])
                 region_to_horiz_region[region] = horiz_regions[-1]
+                rg = RoomGrid()
+                rg.add_region(region)
+                room_group_to_grid[horiz_regions[-1][0].name] = rg
 
             # Once we are more knowledgable about door locations and dungeon shapes we can use a fitting algo to allow for N/S stuff too
+            # this whole thing is just all fucked, it needs a rewrite
             def process_region(region, cur_list=[]):
                 if region in walked_regions:
                     return cur_list
                 print("walking to " + region.name)
                 walked_regions.add(region)
 
-                valid_single_dirs = get_valid_single_dirs(region, True)
-
+                valid_single_dirs = get_valid_single_dirs(region)
+                valid_single_exits = get_valid_single_exits(region)
 
                 if Direction.West in valid_single_dirs and valid_single_dirs[Direction.West] not in cur_list:
                     west_region = valid_single_dirs[Direction.West]
@@ -765,6 +713,14 @@ def map(world):
 
                         h_region.append(region)
                         region_to_horiz_region[region] = h_region
+
+
+
+                        exit = valid_single_exits[Direction.West]
+                        
+                        offset = (exit.door.doorIndex%3) - (exit.door.dest.doorIndex%3)
+                        #print(f"With offset of {offset * DHalf}")
+                        room_group_to_grid[h_region[0].name].add_region(region, offset * DHalf)
                     else:
                         foobar = valid_single_dirs_for_west.get(Direction.East)
                         if foobar:
@@ -780,7 +736,7 @@ def map(world):
 
                 # attempt to walk east...this doesn't work well
                 # really we need to split exit processing and combining ffs
-                assert valid_single_dirs is not None
+
                 if Direction.East in valid_single_dirs and valid_single_dirs[Direction.East] not in cur_list:
                     
                     
@@ -811,29 +767,11 @@ def map(world):
                                 future_connections.setdefault(region, []).append((region, connect, door_a, door_b))
 
                 return cur_list
+
             for region in shadow_dungeon:
-
-
                 process_region(region)
 
-            print(len(future_connections))
-            # for horiz_region in horiz_regions:
-            #     global cluster_index
-            #     with dungeon_subgraph.subgraph(name='cluster_'+str(cluster_index)) as cluster:
-            #         #cluster.attr(style='invis')
-            #         cluster_index += 1
-            #         with cluster.subgraph() as subregion:
-            #             subregion.attr(rank='same')
-
-            #             for region in horiz_region:
-                       
-            #                 for c in future_connections.get(region, []):
-            #                     generate_connection(subregion, c[0], c[1], c[2], c[3])
-
-
-
             for horiz_region in horiz_regions:
-
                 add_region_group(dungeon_subgraph, horiz_region)
 
             for horiz_region in horiz_regions:

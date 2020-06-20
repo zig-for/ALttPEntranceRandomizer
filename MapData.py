@@ -265,9 +265,9 @@ region_to_rooms = {
 'Skull Pot Circle':make_room(88, [1]),
 'Skull Pull Switch':make_room(88, [0]),
 'Skull Big Chest':make_room(88, [2]),
-'Skull Pinball':make_room(103, left_side),
+'Skull Pinball':make_room(104, all_quadrants),
 'Skull Compass Room':make_room(103, right_side), #????
-'Skull Left Drop':make_room(103, [0]), #???
+'Skull Left Drop':make_room(103, left_side), #???
 'Skull Pot Prison':make_room(87, [3]),
 'Skull 2 East Lobby':make_room(87, [2]),
 'Skull Big Key':make_room(87, [0]),
@@ -458,7 +458,7 @@ region_to_rooms = {
 
 'TR Crystal Maze':make_room(196, all_quadrants),
 'TR Crystal Maze End':make_room(196, top_side),
-'TR Final Abyss':make_room(180, top_side),
+'TR Final Abyss':make_room(180, all_quadrants),
 'TR Boss':make_room(164, [2]),
 
         # gt
@@ -475,7 +475,7 @@ region_to_rooms = {
 'GT Crystal Conveyor':make_room(157,[1]),
 'GT Compass Room':make_room(157, [0]),
 
-'GT Invisible Bridges':make_room(157, bottom_side),
+'GT Invisible Bridges':make_room(156, all_quadrants), #???
 'GT Invisible Catwalk':make_room(157, bottom_side),
 'GT Conveyor Cross':make_room(139, [1]),
 'GT Hookshot East Platform':make_room(139, [0]),
