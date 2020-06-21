@@ -82,7 +82,7 @@ region_to_rooms = {
 'Eastern Lobby Left Ledge':make_room(201, [0]),
 'Eastern Lobby Right Ledge':make_room(201, [1]),
 'Eastern Cannonball':make_room(185, all_quadrants),
-'Eastern Cannonball Ledge':make_room(185, bottom_side),
+'Eastern Cannonball Ledge':make_room(185, top_side), #???
 'Eastern Courtyard Ledge':make_room(169, bottom_side),
 'Eastern East Wing':make_room(170, left_side),
 'Eastern Pot Switch':make_room(170, [1]),
@@ -429,7 +429,7 @@ region_to_rooms = {
 'TR Compass Room':make_room(214, left_side),
 'TR Hub':make_room(198, all_quadrants),
 'TR Torches Ledge':make_room(198, [2]),
-'TR Torches':make_room(198, all_quadrants),
+'TR Torches':make_room(199, all_quadrants),
 'TR Roller Room':make_room(183, left_side),
 'TR Tile Room':make_room(182, [3]),
 'TR Refill':make_room(182, [1]),
@@ -475,8 +475,11 @@ region_to_rooms = {
 'GT Crystal Conveyor':make_room(157,[1]),
 'GT Compass Room':make_room(157, [0]),
 
-'GT Invisible Bridges':make_room(156, all_quadrants), #???
-'GT Invisible Catwalk':make_room(157, bottom_side),
+#'GT Invisible Bridges':make_room(156, all_quadrants), #???
+#'GT Invisible Catwalk':make_room(157, bottom_side),
+'GT Invisible Catwalk':make_room(156, all_quadrants), #???
+'GT Invisible Bridges':make_room(157, bottom_side),
+
 'GT Conveyor Cross':make_room(139, [1]),
 'GT Hookshot East Platform':make_room(139, [0]),
 'GT Hookshot North Platform':make_room(139, [0]),

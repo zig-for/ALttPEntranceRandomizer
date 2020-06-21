@@ -27,36 +27,54 @@ def drange(start, stop, step):
 
 
 def get_door_port(region, door, is_lead):
-    def f(door, is_lead):
-        if door:
-            if type(door) != Door:
+    print(f'Gen door for {door and door.name}')
+
+    if door:
+        if type(door) != Door:
+            print('not a door')
+            return ''
+
+        if door.type == DoorType.Warp:
+            print('warp')
+            return ''
+        elif door.type == DoorType.Hole:
+            print('hole')
+            if is_lead:
                 return ''
+            return ''
 
-            if door.type == DoorType.Warp:
-                return 'c'
-            elif door.type == DoorType.Hole:
-                if is_lead:
-                    return 's'
-                return 'n'
-            port_mapping = {
-                Direction.West : 'w',
-                Direction.East : 'e',
-                Direction.South : 's',
-                Direction.North : 'n',
-                #Direction.Up : ':n',  # Allow any direction, these are stairs...
-                #Direction.Down : ':s',
-            }
+        port_mapping = {
+            Direction.West : 'w',
+            Direction.East : 'e',
+            Direction.South : 's',
+            Direction.North : 'n',
+            #Direction.Up : ':n',  # Allow any direction, these are stairs...
+            #Direction.Down : ':s',
+        }
 
-            if door.direction in port_mapping:
-                return port_mapping[door.direction]
+        if door.direction not in port_mapping:
+            print('not a dir')
+            return ''
 
-        # probably fall?
-        return 'n'
-    d = f(door, is_lead)
+        #assert(door.type != DoorType.Interior)
+        if door.type == DoorType.Interior:
+            print('WARNING: interior door not combined!!!!')
+            print(door.name)
+            return ''
 
-    if d:
-        d = ":" + region.name + '_' + d
-    return d
+        if door.doorIndex == -1:
+            print('No doorindex :\'(')
+            return ''
+
+        #(No, 0x9b, Left, High)
+        supertile = supertile_for_room(merged_room_data[region.name])
+        dir_str = str(door.direction).replace('Direction.', '')
+        s = f':{supertile}_{dir_str}_{door.doorIndex}'
+         
+        print(f'{door.name} <=> {s}')
+
+        return s
+
 
 
 def generate_connection(region_to_horiz_region, graph, region, connect, door_a, door_b):
@@ -73,6 +91,16 @@ def generate_connection(region_to_horiz_region, graph, region, connect, door_a, 
 
     name_a = region_to_horiz_region[region][0].name + get_door_port(region, door_a, True)
     name_b = region_to_horiz_region[connect][0].name + get_door_port(connect, door_b, False)
+    
+    if door_a.type in [DoorType.Normal]:
+        style = 'solid'
+    else:
+        style = 'dashed'
+
+    if door_a.type in [DoorType.Interior]:
+        color = 'red'
+    else:
+        color = 'black'
 
     constraint_types = [
         DoorType.Normal,
@@ -89,14 +117,14 @@ def generate_connection(region_to_horiz_region, graph, region, connect, door_a, 
         assert(constraint)
 
     # fix horizontal order
-    if door_a.direction == Direction.West or  door_a.direction == Direction.South or door_a.type == DoorType.Hole:
+    if door_a.direction == Direction.West or door_a.direction == Direction.South or door_a.type == DoorType.Hole or door_a.type == DoorType.Warp:
         if arrow_dir == 'forward':
             arrow_dir = 'back'
         elif arrow_dir == 'back':
             arrow_dir = 'forward'
-        graph.edge(name_b, name_a, dir=arrow_dir,constraint=constraint, splines=spline)
+        graph.edge(name_b, name_a, dir=arrow_dir,constraint=constraint, splines=spline, style=style, color=color)
     else:
-        graph.edge(name_a, name_b, dir=arrow_dir,constraint=constraint,splines=spline)
+        graph.edge(name_a, name_b, dir=arrow_dir,constraint=constraint,splines=spline, style=style, color=color)
 
 def is_valid_map_exit(exit):
     return exit.door and get_region(exit) and get_region(exit).type == RegionType.Dungeon
@@ -298,17 +326,25 @@ def generate_shadow_dungeon(start_regions):
 
 TABLE_START = "<<TABLE BORDER=\"0\" CELLBORDER=\"0\" CELLSPACING=\"0\" CELLPADDING=\"0\" >"
 ROW_START = "<TR>"
-CELL_FORMAT = "<TD{port}>{image}{label}</TD>"
 ROW_END = "</TR>"
 TABLE_END = "</TABLE>>"
 
-def make_cell(label="", image='', port="", colspan=1, rowspan=1, imagesize=100):
+def make_spacer_cell(width=0, height=0):
+    return f'<TD FIXEDSIZE="TRUE" WIDTH="{width}" HEIGHT="{height}"></TD>'
+
+
+def make_cell(label="", image='', port="", colspan=1, rowspan=1, height=0, width=0):
     # TODO: figure out how the fuck image sizing works
     if port:
-        port = ' PORT="{}" COLSPAN="{}" ROWSPAN="{}" '.format(port, colspan, rowspan)
+
+        port = ' PORT="{}" '.format(port)
+        print("set port to ")
+        print(port)
     if image:
         image = f'<IMG SRC="{image}" />'
-    return CELL_FORMAT.format(label=label, port=port, image=image)#image if label else '')
+    return f'<TD FIXEDSIZE="TRUE" {port} COLSPAN="{rowspan}" ROWSPAN="{colspan}" HEIGHT="{height}" WIDTH="{width}">{image}{label}</TD>'
+
+    
 
 def get_room_image(region):
     return merged_room_data.get(region.name)
@@ -329,7 +365,11 @@ OccupiedTileBottom = object()
 OccupiedTileRight = object()
 OccupiedTileBottomRight = object()
 
-Occupied = [OccupiedTileBottom, OccupiedTileRight, OccupiedTileBottomRight]
+Occupied = {
+    OccupiedTileRight: (1, 0),
+    OccupiedTileBottom: (0, 1),
+    OccupiedTileBottomRight: (1, 1),
+}
 
 # TODO: make coordinate object to not have to deal with 5s and 10s
 
@@ -429,6 +469,53 @@ def make_cell_debug(l):
     else:
         return make_cell()
 
+def get_door_str_for_quad_and_dir(supertile, quad, i):
+    Top = 0
+    Left = 0
+    Mid = 1
+    Bot = 2
+    Right = 2
+
+
+    # look, there's a way to do this mathematically but i cba
+    lookup = {
+        (0, 2): (Direction.North, Left),
+        (0, 3): (Direction.North, Left),
+        (0, 5): (Direction.North, Mid),
+        (1, 0): (Direction.North, Mid),
+        (1, 2): (Direction.North, Right),
+        (1, 3): (Direction.North, Right),
+
+        (0, 8): (Direction.West, Top),
+        (0, 10): (Direction.West, Top),
+        (0, 14): (Direction.West, Mid),
+        (2, 0): (Direction.West, Mid),
+        (2, 8): (Direction.West, Bot),
+        (2, 10): (Direction.West, Bot),
+
+        (2, 16): (Direction.South, Left),
+        (2, 17): (Direction.South, Left),
+        (2, 19): (Direction.South, Mid),
+        (3, 14): (Direction.South, Mid),
+        (3, 16): (Direction.South, Right),
+        (3, 17): (Direction.South, Right),
+
+        (1, 9): (Direction.East, Top),
+        (1, 11): (Direction.East, Top),
+        (1, 19): (Direction.East, Mid),
+        (3, 5): (Direction.East, Mid),
+        (3, 9): (Direction.East, Bot),
+        (3, 11): (Direction.East, Bot),
+    }
+
+    foobar = lookup.get((quad, i))
+    if not foobar:
+        return f''
+
+    dir_str = str(foobar[0]).replace('Direction.', '')
+
+    return f'{supertile}_{dir_str}_{foobar[1]}'
+    
 def make_table_for_group(graph, group):
     room_grid = construct_geometry_for_group(group)
 
@@ -440,41 +527,69 @@ def make_table_for_group(graph, group):
     s = TABLE_START
 
     extents = room_grid._extents_for_grid(room_grid.grid)
+    s += ROW_START + empty_cell
+    for x in drange(extents[0][0], extents[1][0] + DHalf, DHalf):
+        s += empty_cell
+        s += make_spacer_cell(width=128)
+        s += empty_cell
+    s += ROW_END
 
     # for each row
     for y in drange(extents[0][1], extents[1][1] + DHalf, DHalf):
         #always lead with empty cell so that the row isnt empty
-        top_row = ROW_START + empty_cell
-        inner_row = ROW_START + empty_cell
-        bottom_row = ROW_START + empty_cell
+        top_row = ROW_START + make_spacer_cell()
+        inner_row = ROW_START + make_spacer_cell(height=128)
+        bottom_row = ROW_START + make_spacer_cell()
         
         #s += make_cell(port=group[0].name+'_w') 
 
         # for each tile within row
         for x in drange(extents[0][0], extents[1][0] + DHalf, DHalf):
             tile = room_grid.grid.get((x, y))
-            if tile in Occupied:
-                inner_row += make_cell(colspan=1)
+            if type(tile) != list and tile in Occupied:
+                offset = Occupied[tile]
+                # TODO: the occupied can probably just contain the tile...
+
+                real_tile = room_grid.grid.get((x - DHalf * offset[0], y - DHalf*offset[1]))
+                supertile_id = real_tile[0]
+                quad_id = real_tile[1]
+
                 if tile == OccupiedTileRight:
                     #top_row += empty_cell * 3
-                    top_row += make_cell_debug('Occupied_R_TL') + make_cell(rowspan=1) + make_cell_debug('Occupied_R_TR')
-                    bottom_row += make_cell_debug('Occupied_R_B')
-                else:
-                    top_row += make_cell_debug('Occupied_R_T')
-                    bottom_row += make_cell_debug('Occupied_R_BL') + make_cell(rowspan=1) + make_cell_debug('Occupied_R_BR')
+                    top_row += make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 3)) \
+                               + make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 4)) \
+                               + make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 5))
+                    inner_row += make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 7))
+                    bottom_row += make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 9))
+                elif tile == OccupiedTileBottom:
+                    top_row += make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 10))
+                    inner_row += make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 12))
+                    bottom_row += make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 14)) \
+                                  + make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 15)) \
+                                  + make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 16)) 
+                elif tile == OccupiedTileBottomRight:
+                    top_row +=  make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 11))
+                    inner_row += make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 13))
+                    bottom_row += make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 17)) \
+                                  + make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 18)) \
+                                  + make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 19)) 
                 continue
             if not tile:
                 top_row += make_cell_debug('E') + make_cell_debug('E') + make_cell_debug('E')
-                inner_row += make_cell_debug('E') + make_cell(image='room_images/empty-tile.png') + make_cell_debug('E')
+                inner_row += make_cell_debug('E') + make_cell(image='room_images/empty-tile.png', width=128, height=128) + make_cell_debug('E')
                 #inner_row += make_cell_debug('E') + make_cell(label='e') + make_cell_debug('E')
                 #inner_row += make_cell_debug('E') + make_cell_debug('E') + make_cell_debug('E')
                 bottom_row += make_cell_debug('E') + make_cell_debug('E') + make_cell_debug('E')
                 continue
             image = f'room_images/{tile[0]}-{tile[1]}.png'
-
-            top_row += make_cell_debug('TR') * 3
-            inner_row += empty_cell + make_cell(label='', port=tile[2].name, image=image, colspan=4, rowspan=4)
-            bottom_row += empty_cell
+            supertile_id = tile[0]
+            quad_id = tile[1]
+            top_row += make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 0)) \
+                       + make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 1)) \
+                       + make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 2))
+            inner_row += make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 6)) \
+                      + make_cell(label='', port=str(supertile_id) + '_' + str(quad_id), image=image, colspan=4, rowspan=4, width=256, height=256)
+            bottom_row += make_cell(port=get_door_str_for_quad_and_dir(supertile_id, quad_id, 8))
 
         s += top_row + ROW_END
         s += inner_row + ROW_END
@@ -495,6 +610,11 @@ merged_room_data = {}
 
 room_group_to_grid = {}
 
+def supertile_for_room(room):
+    for row in room:
+        for tile in row:
+            if tile:
+                return tile[0]
 def map(world):
     global merged_room_data
 
@@ -505,6 +625,7 @@ def map(world):
     # TODO: pass player here and reset
 
     graph = Digraph(comment='Maps',  graph_attr={'rankdir': 'BT'}, node_attr={'shape': 'box'})
+    graph.attr(nodesep='2', ranksep='2', pack='8')
 
     generate_logical_regions()
 
@@ -523,11 +644,7 @@ def map(world):
                 return merged_room_data[region]
             return 
 
-        def supertile_for_room(room):
-            for row in room:
-                for tile in row:
-                    if tile:
-                        return tile[0]
+        
 
         def fixup_exit(region, merged_region):
             # hackery because I didn't copy entrances TODO fix this
@@ -644,7 +761,7 @@ def map(world):
         regenerate_entrances_from_exits(shadow_dungeon)
 
 
-        MERGE_LOGICAL_REGIONS = False
+        MERGE_LOGICAL_REGIONS = True
         if MERGE_LOGICAL_REGIONS:
             for region in shadow_dungeon:
                 if region in dead_regions:
@@ -718,7 +835,11 @@ def map(world):
 
                         exit = valid_single_exits[Direction.West]
                         
-                        offset = (exit.door.doorIndex%3) - (exit.door.dest.doorIndex%3)
+                        assert(exit.door.doorIndex < 3)
+                        assert(exit.door.dest.doorIndex < 3)
+                        assert(exit.door.doorIndex >= 0)
+                        assert(exit.door.dest.doorIndex >= 0)
+                        offset = (exit.door.doorIndex) - (exit.door.dest.doorIndex)
                         #print(f"With offset of {offset * DHalf}")
                         room_group_to_grid[h_region[0].name].add_region(region, offset * DHalf)
                     else:
