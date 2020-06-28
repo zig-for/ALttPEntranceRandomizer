@@ -39,9 +39,10 @@ def get_door_port(region, door, is_lead):
             return ''
         elif door.type == DoorType.Hole:
             print('hole')
+            
             if is_lead:
                 return ''
-            return ''
+            return 
 
         port_mapping = {
             Direction.West : 'w',
@@ -68,7 +69,15 @@ def get_door_port(region, door, is_lead):
 
         #(No, 0x9b, Left, High)
         supertile = supertile_for_room(merged_room_data[region.name])
-        dir_str = str(door.direction).replace('Direction.', '')
+        if door.direction is None:
+            dir_str = 'tile'
+        else:
+            dir_str = str(door.direction).replace('Direction.', '')
+
+        if door.doorIndex is None:
+            door_str = ''
+        else:
+            door_str = f'_{door.doorIndex}'
         s = f':{supertile}_{dir_str}_{door.doorIndex}'
          
         print(f'{door.name} <=> {s}')
@@ -88,6 +97,13 @@ def generate_connection(region_to_horiz_region, graph, region, connect, door_a, 
         #print(f"Warning {door_b} is not a door")
         pass
     
+    # For some reason, not all connections are caught when we merge rooms together
+    # For now, discard them
+    # TODO: debug
+    if door_a.type == DoorType.Interior:
+        # uhh, this doesn't actually happen. :|
+        assert(False)
+        return
 
     name_a = region_to_horiz_region[region][0].name + get_door_port(region, door_a, True)
     name_b = region_to_horiz_region[connect][0].name + get_door_port(connect, door_b, False)
@@ -97,10 +113,19 @@ def generate_connection(region_to_horiz_region, graph, region, connect, door_a, 
     else:
         style = 'dashed'
 
-    if door_a.type in [DoorType.Interior]:
-        color = 'red'
+    if door_a.type in [DoorType.Warp]:
+        arrowtail = 'odiamond'
+        penwidth = '2'
+    else:
+        arrowtail = 'normal'
+        penwidth = '5'
+
+    if door_a.type in [DoorType.Warp]:
+        color = 'black'
     else:
         color = 'black'
+
+    
 
     constraint_types = [
         DoorType.Normal,
@@ -114,7 +139,9 @@ def generate_connection(region_to_horiz_region, graph, region, connect, door_a, 
     spline = 'polyline' if door_a.type == DoorType.SpiralStairs or door_a.type == DoorType.Warp else 'spline'
 
     if door_a.direction == Direction.East or door_a.direction == Direction.West:
-        assert(constraint)
+        constraint = 'false'
+
+    
 
     # fix horizontal order
     if door_a.direction == Direction.West or door_a.direction == Direction.South or door_a.type == DoorType.Hole or door_a.type == DoorType.Warp:
@@ -122,9 +149,9 @@ def generate_connection(region_to_horiz_region, graph, region, connect, door_a, 
             arrow_dir = 'back'
         elif arrow_dir == 'back':
             arrow_dir = 'forward'
-        graph.edge(name_b, name_a, dir=arrow_dir,constraint=constraint, splines=spline, style=style, color=color)
+        graph.edge(name_b, name_a, dir=arrow_dir,constraint=constraint, splines=spline, style=style, color=color, arrowtail=arrowtail, penwidth=penwidth)
     else:
-        graph.edge(name_a, name_b, dir=arrow_dir,constraint=constraint,splines=spline, style=style, color=color)
+        graph.edge(name_a, name_b, dir=arrow_dir,constraint=constraint,splines=spline, style=style, color=color, arrowtail=arrowtail, penwidth=penwidth)
 
 def is_valid_map_exit(exit):
     return exit.door and get_region(exit) and get_region(exit).type == RegionType.Dungeon
@@ -329,20 +356,17 @@ ROW_START = "<TR>"
 ROW_END = "</TR>"
 TABLE_END = "</TABLE>>"
 
-def make_spacer_cell(width=0, height=0):
-    return f'<TD FIXEDSIZE="TRUE" WIDTH="{width}" HEIGHT="{height}"></TD>'
-
 
 def make_cell(label="", image='', port="", colspan=1, rowspan=1, height=0, width=0):
     # TODO: figure out how the fuck image sizing works
+    hw = ''
     if port:
-
         port = ' PORT="{}" '.format(port)
-        print("set port to ")
-        print(port)
     if image:
         image = f'<IMG SRC="{image}" />'
-    return f'<TD FIXEDSIZE="TRUE" {port} COLSPAN="{rowspan}" ROWSPAN="{colspan}" HEIGHT="{height}" WIDTH="{width}">{image}{label}</TD>'
+    if height and width:
+        hw = f'FIXEDSIZE="TRUE" HEIGHT="{height}" WIDTH="{width}"'
+    return f'<TD  {port} COLSPAN="{rowspan}" ROWSPAN="{colspan}" {hw} >{image}{label}</TD>'
 
     
 
@@ -406,7 +430,9 @@ class RoomGrid():
 
         for x in range(len(supertile[0])):
             if supertile[0][x]:
-                y_offset += supertile[0][x][1] // 2
+                # I have no idea why this works. I've broken something, I have to go back and debug
+                # It should be // 2
+                y_offset += supertile[0][x][1] * DHalf
                 break
         else:
             assert(False)
@@ -510,10 +536,14 @@ def get_door_str_for_quad_and_dir(supertile, quad, i):
 
     foobar = lookup.get((quad, i))
     if not foobar:
-        return f''
+        return ''
 
-    dir_str = str(foobar[0]).replace('Direction.', '')
 
+    if foobar[0] is None:
+        dir_str = 'tile'
+    else:
+        dir_str = str(foobar[0]).replace('Direction.', '')
+    
     return f'{supertile}_{dir_str}_{foobar[1]}'
     
 def make_table_for_group(graph, group):
@@ -530,16 +560,16 @@ def make_table_for_group(graph, group):
     s += ROW_START + empty_cell
     for x in drange(extents[0][0], extents[1][0] + DHalf, DHalf):
         s += empty_cell
-        s += make_spacer_cell(width=128)
+        s += make_cell(width=128)
         s += empty_cell
     s += ROW_END
 
     # for each row
     for y in drange(extents[0][1], extents[1][1] + DHalf, DHalf):
         #always lead with empty cell so that the row isnt empty
-        top_row = ROW_START + make_spacer_cell()
-        inner_row = ROW_START + make_spacer_cell(height=128)
-        bottom_row = ROW_START + make_spacer_cell()
+        top_row = ROW_START + make_cell()
+        inner_row = ROW_START + make_cell(height=128)
+        bottom_row = ROW_START + make_cell()
         
         #s += make_cell(port=group[0].name+'_w') 
 
@@ -616,9 +646,13 @@ def supertile_for_room(room):
             if tile:
                 return tile[0]
 def map(world):
+    #player = 1
+    for i in range(1, world.players + 1):
+        map_player(world, i)
+
+def map_player(world, player):
     global merged_room_data
 
-    player = 1
 
     queue = deque(world.dungeon_layouts[player].values())
 
@@ -626,6 +660,8 @@ def map(world):
 
     graph = Digraph(comment='Maps',  graph_attr={'rankdir': 'BT'}, node_attr={'shape': 'box'})
     graph.attr(nodesep='2', ranksep='2', pack='8')
+    graph.attr('edge', penwidth='5')
+    
 
     generate_logical_regions()
 
@@ -633,7 +669,7 @@ def map(world):
         builder = queue.popleft()
         done = set()
 
-        start_regions = set(convert_regions(builder.layout_starts, world, player))  # todo: set all_entrances for basic
+        start_regions = set(convert_regions(builder.layout_starts, world, player)) 
 
         shadow_dungeon, start_regions = generate_shadow_dungeon(start_regions)
 
@@ -738,17 +774,18 @@ def map(world):
                                 merge_regions(region, other_region)
                                 dead_regions.add(other_region)
                                 fixup_exit(region, other_region)
-                                print(f'merging {region.name} + {other_region.name}')
-                                print(f'merging {room} + {other_room}')
+                                #print(f'merging {region.name} + {other_region.name}')
+                                #print(f'merging {room} + {other_room}')
                                 new_room = merge_rooms(room, other_room)
-                                print(new_room)
+                                #print(new_room)
                                 merged_room_data[region.name] = new_room
                                 supertile = [p for p in supertile if p[0] != other_region and p[0] != region] + [(region, new_room)]
                                 merged_some_rooms = True
                                 break
                             else:
-                                print(f'not merging {region.name} + {other_region.name}')
-                                print(f'not merging {room} + {other_room}')
+                                pass
+                                #print(f'not merging {region.name} + {other_region.name}')
+                                #print(f'not merging {room} + {other_room}')
 
                         if merged_some_rooms:
                             break
@@ -790,12 +827,14 @@ def map(world):
 
 
         with graph.subgraph(name='cluster_'+str(builder)) as dungeon_subgraph:
-
+            dungeon_subgraph.attr(label=builder.name, fontsize='200', labelloc='t',fontname='Roboto')
             # todo: just rewrite all this crap
             horiz_regions = []
             region_to_horiz_region = {}
 
             walked_regions = set()
+
+            dont_connect_doors = set()
 
             def new_horiz_region(region):
                 horiz_regions.append([region])
@@ -826,6 +865,7 @@ def map(world):
                     if valid_single_dirs_for_west.get(Direction.East) == region:
                         # TODO: this can fail...how?!
                         print("link " + region.name + " is east of " + west_region.name) 
+
                         h_region = region_to_horiz_region[west_region]
 
                         h_region.append(region)
@@ -835,13 +875,28 @@ def map(world):
 
                         exit = valid_single_exits[Direction.West]
                         
+                        print(exit.name)
+                        print(type(exit))
+                        print(exit.connected_region.name)
+                        print(exit.door.name)
+                        print(type(exit.door))
+                        print(exit.door.dest.name)
                         assert(exit.door.doorIndex < 3)
                         assert(exit.door.dest.doorIndex < 3)
                         assert(exit.door.doorIndex >= 0)
                         assert(exit.door.dest.doorIndex >= 0)
-                        offset = (exit.door.doorIndex) - (exit.door.dest.doorIndex)
+                        offset = (exit.door.dest.doorIndex) - (exit.door.doorIndex) 
                         #print(f"With offset of {offset * DHalf}")
-                        room_group_to_grid[h_region[0].name].add_region(region, offset * DHalf)
+                        room_group_to_grid[h_region[0].name].add_region(region, -offset * DHalf)
+                        
+                        dont_connect_doors.add(exit.door.name)
+                        dont_connect_doors.add(exit.door.dest.name)
+
+                        for es in [region.exits, region.entrances, west_region.exits, west_region.entrances]:
+                            if exit in es:
+                                es.remove(exit)
+                            if exit.connected_region in es and exit.connected_region.door == exit.door:
+                                es.remove(exit.connected_region)
                     else:
                         foobar = valid_single_dirs_for_west.get(Direction.East)
                         if foobar:
@@ -859,8 +914,6 @@ def map(world):
                 # really we need to split exit processing and combining ffs
 
                 if Direction.East in valid_single_dirs and valid_single_dirs[Direction.East] not in cur_list:
-                    
-                    
                     process_region(valid_single_dirs[Direction.East], cur_list)
 
                 for exit in region.exits:
@@ -868,11 +921,19 @@ def map(world):
                         continue
                     door_a = exit.door
                     
+                    if door_a.name in dont_connect_doors:
+                        continue
+              
+
                     connect = get_region(exit)
                
                     door_b = door_a.dest
                     assert(door_b)
+                    if door_b.name in dont_connect_doors:
+                        continue
                     if door_a not in done:
+                        
+
                         done.add(door_a)
                         # TODO: this is really dumb - we should just check if we are walking through a link that's in our horiz region :(
                         if (door_a.direction == Direction.West or door_a.direction == Direction.East) and door_a.direction in valid_single_dirs:
@@ -898,7 +959,8 @@ def map(world):
             for horiz_region in horiz_regions:
                 for region in horiz_region:
                     for c in future_connections.get(region, []):
-                        generate_connection(region_to_horiz_region, dungeon_subgraph, c[0], c[1], c[2], c[3])
+                        if c[2].name not in dont_connect_doors and c[3].name not in dont_connect_doors:
+                            generate_connection(region_to_horiz_region, dungeon_subgraph, c[0], c[1], c[2], c[3])
                         
-    graph.render('test-output/map.gv', view=True) 
+    graph.render(f'map-output/P{player}_{world.get_player_names(player)}_All.gv', view=True) 
     
