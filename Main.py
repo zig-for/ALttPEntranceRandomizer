@@ -159,7 +159,7 @@ def main(args, seed=None, fish=None):
                     player
                   )
                 )
-        Mapper.map(world)
+        Mapper.map_player(world, player)
 
 
     logger.info(world.fish.translate("cli","cli","fill.world"))

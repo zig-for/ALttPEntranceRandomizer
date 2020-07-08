@@ -826,8 +826,10 @@ def map_player(world, player):
 
 
 
-        with graph.subgraph(name='cluster_'+str(builder)) as dungeon_subgraph:
+        with graph.subgraph(name='cluster_'+str(builder), graph_attr={'rankdir': 'BT'}, node_attr={'shape': 'box'}) as dungeon_subgraph:
             dungeon_subgraph.attr(label=builder.name, fontsize='200', labelloc='t',fontname='Roboto')
+            dungeon_subgraph.attr(nodesep='2', ranksep='2', pack='8')
+            dungeon_subgraph.attr('edge', penwidth='5')
             # todo: just rewrite all this crap
             horiz_regions = []
             region_to_horiz_region = {}
@@ -961,6 +963,7 @@ def map_player(world, player):
                     for c in future_connections.get(region, []):
                         if c[2].name not in dont_connect_doors and c[3].name not in dont_connect_doors:
                             generate_connection(region_to_horiz_region, dungeon_subgraph, c[0], c[1], c[2], c[3])
+            dungeon_subgraph.render(f'map-output/P{player}_{world.get_player_names(player)}_{builder.name}.gv', view=False) 
                         
     graph.render(f'map-output/P{player}_{world.get_player_names(player)}_All.gv', view=True) 
     
