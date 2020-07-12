@@ -129,7 +129,7 @@ def can_place_boss(world, player, boss, dungeon_name, level=None):
             return False
 
     if dungeon_name in ['Ganons Tower', 'Inverted Ganons Tower'] and level == 'middle':
-        if boss in ["Blind"]:
+        if boss in ["Blind", "Kholdstare"]:
             return False
 
     if dungeon_name == 'Tower of Hera' and boss in ["Armos Knights", "Arrghus",	"Blind", "Trinexx", "Lanmolas"]:
