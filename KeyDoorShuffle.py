@@ -1151,6 +1151,7 @@ def validate_key_layout(key_layout, world, player):
     # retro is all good - except for hyrule castle in standard mode
     if world.retro[player] and (world.mode[player] != 'standard' or key_layout.sector.name != 'Hyrule Castle'):
         return True
+    return True
     flat_proposal = key_layout.flat_prop
     state = ExplorationState(dungeon=key_layout.sector.name)
     state.key_locations = key_layout.max_chests

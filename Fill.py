@@ -262,26 +262,25 @@ def distribute_items_restrictive(world, gftower_trash=False, fill_locations=None
 
     # get items to distribute
     random.shuffle(world.itempool)
-    progitempool = [item for item in world.itempool if item.advancement]
-    prioitempool = [item for item in world.itempool if not item.advancement and item.priority]
-    restitempool = [item for item in world.itempool if not item.advancement and not item.priority]
+    progitempool = [item for item in world.itempool if item.advancement or 'Progressive' in item.name]
+    prioitempool = [item for item in world.itempool if not item.advancement and item.priority and item not in progitempool]
+    restitempool = [item for item in world.itempool if not item.advancement and not item.priority and item not in progitempool and item not in prioitempool]
 
-    # fill in gtower locations with trash first
+
+        # fill in hcastle locations with trash first
     for player in range(1, world.players + 1):
-        if not gftower_trash or not world.ganonstower_vanilla[player] or world.doorShuffle[player] == 'crossed':
-            continue
 
-        gftower_trash_count = (random.randint(15, 50) if world.goal[player] == 'triforcehunt' else random.randint(0, 15))
+        for dungeon in world.dungeons:
+            if 'Hyrule' in dungeon.name:
+                hyrule_locations = [loc for loc in fill_locations if loc.parent_region and loc.parent_region.dungeon == dungeon and loc.player == player]
 
-        gtower_locations = [location for location in fill_locations if 'Ganons Tower' in location.name and location.player == player]
-        random.shuffle(gtower_locations)
-        trashcnt = 0
-        while gtower_locations and restitempool and trashcnt < gftower_trash_count:
-            spot_to_fill = gtower_locations.pop()
-            item_to_place = restitempool.pop()
+        random.shuffle(hyrule_locations)
+        while hyrule_locations and progitempool:
+            spot_to_fill = hyrule_locations.pop()
+            item_to_place = progitempool.pop()
             world.push_item(spot_to_fill, item_to_place, False)
             fill_locations.remove(spot_to_fill)
-            trashcnt += 1
+
 
     random.shuffle(fill_locations)
     fill_locations.reverse()

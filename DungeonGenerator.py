@@ -79,6 +79,7 @@ def generate_dungeon_main(builder, entrance_region_names, split_dungeon, world, 
     all_regions = set()
     bk_needed = False
     bk_special = False
+    print(len(builder.sectors))
     for sector in builder.sectors:
         for door in sector.outstanding_doors:
             doors_to_connect[door.name] = door
@@ -97,8 +98,8 @@ def generate_dungeon_main(builder, entrance_region_names, split_dungeon, world, 
     while not finished:
         # what are my choices?
         itr += 1
-        if itr > 5000:
-            raise Exception('Generation taking too long. Ref %s' % name)
+        #if itr > 5000:
+        #    raise Exception('Generation taking too long. Ref %s' % name)
         if depth not in dungeon_cache.keys():
             dungeon, hangers, hooks = gen_dungeon_info(name, builder.sectors, entrance_regions, proposed_map,
                                                        doors_to_connect, bk_needed, bk_special, world, player)
@@ -1236,10 +1237,10 @@ def assign_location_sectors(dungeon_map, free_location_sectors, global_pole):
             choice = d_idx[choices[i].name]
             totals[choice] += sector.chest_locations
         valid = True
-        for d_name, idx in d_idx.items():
-            if totals[idx] < 5:  # min locations for dungeons is 5 (bk exception)
-                valid = False
-                break
+        #for d_name, idx in d_idx.items():
+            #if totals[idx] < 5:  # min locations for dungeons is 5 (bk exception)
+            #    valid = False
+            #    break
     for i, choice in enumerate(choices):
         builder = dungeon_map[choice.name]
         assign_sector(sector_list[i], builder, free_location_sectors, global_pole)
@@ -1255,14 +1256,17 @@ def weighted_random_locations(dungeon_map, free_location_sectors):
         population.append(dungeon_builder)
         totals.append(dungeon_builder.location_cnt)
         ttl_assigned += dungeon_builder.location_cnt
-        weights.append(6.375)
+        if "Hyrule" in dungeon_builder.name:
+            weights.append(100000.375)
+        else:
+            weights.append(6.375)
         d_idx[dungeon_builder.name] = i
     average = ttl_assigned / 13
-    for i, db in enumerate(population):
-        if db.location_cnt < average:
-            weights[i] += average - db.location_cnt
-        if db.location_cnt > average:
-            weights[i] = max(0, weights[i] - db.location_cnt + average)
+    #for i, db in enumerate(population):
+    #    if db.location_cnt < average:
+    #        weights[i] += average - db.location_cnt
+    #    if db.location_cnt > average:
+    #        weights[i] = max(0, weights[i] - db.location_cnt + average)
 
     choices = random.choices(population, weights, k=len(free_location_sectors))
     return choices, d_idx, totals
@@ -2276,7 +2280,7 @@ default_dungeon_entrances = {
 
 # todo: calculate these for ER - the multi entrance dungeons anyway
 dungeon_dead_end_allowance = {
-    'Hyrule Castle': 6,
+    'Hyrule Castle': 600,
     'Eastern Palace': 1,
     'Desert Palace': 2,
     'Tower of Hera': 1,

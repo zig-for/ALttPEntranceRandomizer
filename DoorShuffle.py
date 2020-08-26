@@ -787,6 +787,7 @@ def assign_cross_keys(dungeon_builders, world, player):
         name = builder.name
         logger.info('Cross Dungeon: Increasing key count by 1 for %s', name)
         builder.key_doors_num += 1
+        builder.key_doors_num = 0
         result = find_valid_combination(builder, start_regions_map[name], world, player, drop_keys=False)
         if result:
             remaining -= 1
@@ -978,11 +979,18 @@ def find_valid_combination(builder, start_regions, world, player, drop_keys=True
         builder.key_doors_num = len(builder.candidates)  # reduce number of key doors
         logger.info('%s: %s', world.fish.translate("cli","cli","lowering.keys.candidates"), builder.name)
     combinations = ncr(len(builder.candidates), builder.key_doors_num)
+    print(combinations)
     itr = 0
     start = time.process_time()
-    sample_list = list(range(0, int(combinations)))
-    random.shuffle(sample_list)
-    proposal = kth_combination(sample_list[itr], builder.candidates, builder.key_doors_num)
+    #sample_list = list(range(0, int(combinations)))
+    
+    builder.key_doors_num = max(0, builder.key_doors_num)
+    #print(builder.key_doors_num)
+    #print(builder.candidates)
+    k_iter = k_combo_iterator(builder.key_doors_num, builder.candidates)
+
+    #random.shuffle(sample_list)
+    proposal = next(k_iter)#kth_combination(sample_list[itr], builder.candidates, builder.key_doors_num)
 
     key_layout = build_key_layout(builder, start_regions, proposal, world, player)
     while not validate_key_layout(key_layout, world, player):
@@ -1001,11 +1009,15 @@ def find_valid_combination(builder, start_regions, world, player, drop_keys=True
             if builder.key_doors_num < 0:
                 raise Exception('Bad dungeon %s - 0 key doors not valid' % builder.name)
             combinations = ncr(len(builder.candidates), builder.key_doors_num)
-            sample_list = list(range(0, int(combinations)))
-            random.shuffle(sample_list)
+            #sample_list = list(range(0, int(combinations)))
+            #random.shuffle(sample_list)
             itr = 0
             start = time.process_time()  # reset time since itr reset
-        proposal = kth_combination(sample_list[itr], builder.candidates, builder.key_doors_num)
+            k_iter = k_combo_iterator(builder.key_doors_num, builder.candidates)
+
+            
+        proposal = next(k_iter)#kth_combination(sample_list[itr], builder.candidates, builder.key_doors_num)
+        #print(proposal)
         key_layout.reset(proposal, builder, world, player)
         if (itr+1) % 1000 == 0:
             mark = time.process_time()-start
@@ -1134,6 +1146,11 @@ def ncr(n, r):
     numerator = reduce(op.mul, range(n, n-r, -1), 1)
     denominator = reduce(op.mul, range(1, r+1), 1)
     return numerator / denominator
+
+import itertools
+
+def k_combo_iterator(k, l):
+    return itertools.combinations(l, k)
 
 
 def reassign_key_doors(builder, world, player):

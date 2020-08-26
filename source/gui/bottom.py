@@ -91,8 +91,9 @@ def bottom_frame(self, parent, args=None):
         seeds = []
         if not needEnemizer or (needEnemizer and hasEnemizer):
             while True:
+                seeds = []
                 if guiargs.seed:
-                    guiargs.seed += 1
+                    guiargs.seed = random.randint(0, 999999999)
                 print(guiargs.seed)
                 try:
                     if guiargs.count is not None and guiargs.seed:
@@ -105,7 +106,7 @@ def bottom_frame(self, parent, args=None):
                         if guiargs.seed:
                             seeds.append(guiargs.seed)
                         else:
-                            random.seed(None)
+                            #random.seed(None)
                             guiargs.seed = random.randint(0, 999999999)
                             seeds.append(guiargs.seed)
                         main(seed=guiargs.seed, args=guiargs, fish=parent.fish)
